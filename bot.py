@@ -54,7 +54,7 @@ async def on_ready():
     except Exception as e:
         print(e)
 
-# --- 1. ORIGINAL HUNT FEATURE ---
+# --- 1. HUNT FEATURE ---
 @bot.tree.command(name="hunt", description="Hunt monsters for EXP, Gold, and Loot!")
 async def hunt(interaction: discord.Interaction):
     p = get_player(interaction.user.id)
@@ -92,7 +92,7 @@ async def hunt(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed)
 
-# --- 2. EQUIPMENT & INVENTORY ---
+# --- 2. EQUIPMENT, SHOP & INVENTORY ---
 @bot.tree.command(name="inventory", description="Check your RPG stats, gear & inventory")
 async def inventory(interaction: discord.Interaction):
     p = get_player(interaction.user.id)
@@ -104,20 +104,30 @@ async def inventory(interaction: discord.Interaction):
     embed.add_field(name="🎒 Items", value=", ".join(p['inventory']) if p['inventory'] else "Empty", inline=False)
     await interaction.response.send_message(embed=embed)
 
+@bot.tree.command(name="shop_list", description="View all available items in the Shop")
+async def shop_list(interaction: discord.Interaction):
+    embed = discord.Embed(title="🛒 RPG Shop Catalog", color=discord.Color.gold())
+    embed.add_field(name="🗡️ Iron Sword", value="**Price:** 200 Gold\n**Effect:** +15 ATK", inline=False)
+    embed.add_field(name="🧪 Health Potion", value="**Price:** 50 Gold\n**Effect:** Restores HP", inline=False)
+    embed.set_footer(text="Use /shop [item] to buy!")
+    await interaction.response.send_message(embed=embed)
+
+# Added Slash Choices for auto-completion!
 @bot.tree.command(name="shop", description="Buy weapons and potions")
-async def shop(interaction: discord.Interaction, item: str):
+@app_commands.choices(item=[
+    app_commands.Choice(name="Iron Sword (200 Gold)", value="iron_sword"),
+    app_commands.Choice(name="Health Potion (50 Gold)", value="potion")
+])
+async def shop(interaction: discord.Interaction, item: app_commands.Choice[str]):
     p = get_player(interaction.user.id)
     shop_items = {
         "iron_sword": {"name": "Iron Sword (+15 ATK)", "price": 200, "atk": 15},
         "potion": {"name": "Health Potion", "price": 50, "type": "potion"}
     }
     
-    item_key = item.lower().replace(" ", "_")
-    if item_key not in shop_items:
-        await interaction.response.send_message("❌ Item not found! Available: `iron_sword` (200G), `potion` (50G)")
-        return
-        
+    item_key = item.value
     selected = shop_items[item_key]
+    
     if p["gold"] < selected["price"]:
         await interaction.response.send_message("❌ You don't have enough gold!")
         return
@@ -134,16 +144,20 @@ async def shop(interaction: discord.Interaction, item: str):
 
 # --- 3. GAMBLING ---
 @bot.tree.command(name="coinflip", description="Gamble gold on a coinflip")
-async def coinflip(interaction: discord.Interaction, bet: int, choice: str):
+@app_commands.choices(choice=[
+    app_commands.Choice(name="Heads", value="heads"),
+    app_commands.Choice(name="Tails", value="tails")
+])
+async def coinflip(interaction: discord.Interaction, bet: int, choice: app_commands.Choice[str]):
     p = get_player(interaction.user.id)
-    choice = choice.lower()
+    user_choice = choice.value
     
     if bet <= 0 or bet > p["gold"]:
         await interaction.response.send_message("❌ Invalid bet amount!")
         return
         
     outcome = random.choice(["heads", "tails"])
-    if choice == outcome:
+    if user_choice == outcome:
         p["gold"] += bet
         res = f"🎉 It was **{outcome}**! You won **{bet} Gold**!"
     else:
