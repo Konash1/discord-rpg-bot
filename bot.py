@@ -1,212 +1,196 @@
 import discord
-import os
 from discord import app_commands
 from discord.ext import commands
 import random
 import json
+import os
 
 intents = discord.Intents.default()
-intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-class MyBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix="!", intents=intents)
+# Simple JSON Database Loader/Saver
+DATA_FILE = "player_data.json"
 
-    async def setup_hook(self):
-        # Sync slash commands with Discord on startup
-        await self.tree.sync()
-        print("⚡ Slash commands synced!")
-
-bot = MyBot()
-
-DATA_FILE = "data.json"
-players = {}
-
-# 1. Load Data
 def load_data():
-    global players
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
-            data = json.load(f)
-            players = {int(k): v for k, v in data.items()}
-            print("💾 Player data loaded!")
-    else:
-        players = {}
+            return json.load(f)
+    return {}
 
-# 2. Save Data
-def save_data():
+def save_data(data):
     with open(DATA_FILE, "w") as f:
-        json.dump(players, f, indent=4)
+        json.dump(data, f, indent=4)
 
-WEAPONS = {
-    "Iron Sword": {"cost": 100, "attack": 25},
-    "Dragon Slayer": {"cost": 300, "attack": 60},
-    "Excalibur": {"cost": 750, "attack": 120}
-}
+player_data = load_data()
 
 def get_player(user_id):
-    if user_id not in players:
-        players[user_id] = {
-            "hp": 100, 
-            "max_hp": 100, 
-            "gold": 50, 
-            "weapon": "Fists", 
-            "attack": 10,
+    uid = str(user_id)
+    if uid not in player_data:
+        player_data[uid] = {
+            "gold": 100,
+            "exp": 0,
             "level": 1,
-            "exp": 0
+            "hp": 100,
+            "max_hp": 100,
+            "atk": 10,
+            "def": 5,
+            "weapon": "Wooden Sword (+5 ATK)",
+            "inventory": ["Health Potion"],
+            "guild": None
         }
-        save_data()
-    
-    # Ensure existing players get level/exp keys if missing
-    player = players[user_id]
-    if "level" not in player: player["level"] = 1
-    if "exp" not in player: player["exp"] = 0
-    return player
+        save_data(player_data)
+    return player_data[uid]
 
-def add_exp(player, amount):
-    """Handles leveling up and increasing stats."""
-    player["exp"] += amount
-    exp_needed = player["level"] * 50  # Level 1 needs 50 EXP, Level 2 needs 100 EXP, etc.
-    
-    leveled_up = False
-    if player["exp"] >= exp_needed:
-        player["level"] += 1
-        player["exp"] -= exp_needed
-        player["max_hp"] += 20
-        player["hp"] = player["max_hp"]  # Full heal on level up
-        player["attack"] += 5
-        leveled_up = True
-        
-    return leveled_up
+# Boss Event Storage
+global_boss = {"name": "Dragon King", "hp": 500, "max_hp": 500, "reward": 1000}
+guilds = {}
 
 @bot.event
 async def on_ready():
-    load_data()
-    print(f"Logged in as {bot.user.name}")
-    print("Bot with Slash Commands & EXP is online!")
+    print(f'Logged in as {bot.user}')
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} command(s)")
+    except Exception as e:
+        print(e)
 
-# --- SLASH COMMANDS ---
-
-@bot.tree.command(name="stats", description="View your player RPG stats")
-async def stats(interaction: discord.Interaction):
-    player = get_player(interaction.user.id)
-    exp_needed = player["level"] * 50
-    
-    embed = discord.Embed(title=f"⚔️ {interaction.user.name}'s Profile", color=discord.Color.gold())
-    embed.add_field(name="⭐ Level", value=f"{player['level']}", inline=True)
-    embed.add_field(name="✨ EXP", value=f"{player['exp']}/{exp_needed}", inline=True)
-    embed.add_field(name="❤️ HP", value=f"{player['hp']}/{player['max_hp']}", inline=True)
-    embed.add_field(name="💰 Gold", value=f"{player['gold']}", inline=True)
-    embed.add_field(name="🗡️ Weapon", value=f"{player['weapon']} (+{player['attack']} ATK)", inline=False)
-    
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="shop", description="View the weapon shop")
-async def shop(interaction: discord.Interaction):
-    embed = discord.Embed(title="🏪 Weapon Shop", description="Use `/buy <weapon_name>` to purchase!", color=discord.Color.blue())
-    for name, info in WEAPONS.items():
-        embed.add_field(name=f"🗡️ {name}", value=f"Cost: **{info['cost']} Gold** | ATK: **+{info['attack']}**", inline=False)
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="buy", description="Buy a weapon from the shop")
-async def buy(interaction: discord.Interaction, weapon_name: str):
-    player = get_player(interaction.user.id)
-    formatted_name = weapon_name.title()
-    
-    if formatted_name not in WEAPONS:
-        await interaction.response.send_message("❌ That weapon doesn't exist!", ephemeral=True)
-        return
-        
-    weapon = WEAPONS[formatted_name]
-    if player["gold"] < weapon["cost"]:
-        await interaction.response.send_message(f"❌ You need **{weapon['cost']} Gold**!", ephemeral=True)
-        return
-        
-    player["gold"] -= weapon["cost"]
-    player["weapon"] = formatted_name
-    player["attack"] = weapon["attack"]
-    save_data()
-    
-    await interaction.response.send_message(f"🎉 {interaction.user.mention} bought **{formatted_name}**!")
-
-@bot.tree.command(name="hunt", description="Hunt wild monsters for Gold and EXP")
+# --- 1. ORIGINAL HUNT FEATURE ---
+@bot.tree.command(name="hunt", description="Hunt monsters for EXP, Gold, and Loot!")
 async def hunt(interaction: discord.Interaction):
-    player = get_player(interaction.user.id)
-    if player["hp"] <= 0:
-        await interaction.response.send_message("💀 You are dead! Use `/heal` first.")
-        return
-
-    monsters = ["Goblin", "Slime", "Wild Boar"]
+    p = get_player(interaction.user.id)
+    
+    monsters = [
+        {"name": "Wild Slime", "min_gold": 10, "max_gold": 25, "exp": 15},
+        {"name": "Goblin Scout", "min_gold": 20, "max_gold": 45, "exp": 30},
+        {"name": "Forest Wolf", "min_gold": 35, "max_gold": 70, "exp": 50}
+    ]
+    
     monster = random.choice(monsters)
+    earned_gold = random.randint(monster["min_gold"], monster["max_gold"])
+    earned_exp = monster["exp"]
     
-    damage_taken = random.randint(5, 15)
-    gold_earned = random.randint(15, 35) + (player["attack"] // 2)
-    exp_earned = random.randint(15, 25)
+    p["gold"] += earned_gold
+    p["exp"] += earned_exp
     
-    player["hp"] -= damage_taken
+    # Level Up Logic
+    level_up_msg = ""
+    if p["exp"] >= p["level"] * 100:
+        p["level"] += 1
+        p["atk"] += 5
+        p["max_hp"] += 20
+        p["hp"] = p["max_hp"]
+        level_up_msg = f"\n🎉 **LEVEL UP!** You reached **Level {p['level']}**! (+5 ATK, +20 Max HP)"
     
-    if player["hp"] <= 0:
-        player["hp"] = 0
-        save_data()
-        await interaction.response.send_message(f"⚔️ Fought a **{monster}** and got knocked out! 💀")
-    else:
-        player["gold"] += gold_earned
-        leveled_up = add_exp(player, exp_earned)
-        save_data()
-        
-        msg = f"⚔️ Defeated **{monster}**!\n💰 Earned **{gold_earned} Gold** | ✨ **+{exp_earned} EXP**\n❤️ HP left: {player['hp']}/{player['max_hp']}"
-        if leveled_up:
-            msg += f"\n\n🎉 **LEVEL UP!** You are now **Level {player['level']}**! (+20 Max HP, +5 Base ATK)"
-        
-        await interaction.response.send_message(msg)
+    save_data(player_data)
+    
+    embed = discord.Embed(title="⚔️ Monster Hunt", color=discord.Color.green())
+    embed.description = (
+        f"You encountered a **{monster['name']}** and defeated it!\n"
+        f"💰 Earned: **{earned_gold} Gold**\n"
+        f"⭐ Earned: **{earned_exp} EXP**"
+        f"{level_up_msg}"
+    )
+    await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="boss", description="Fight the Red Dragon Boss")
-async def boss(interaction: discord.Interaction):
-    player = get_player(interaction.user.id)
-    if player["hp"] <= 0:
-        await interaction.response.send_message("💀 You are dead! Use `/heal` first.")
+# --- 2. EQUIPMENT & INVENTORY ---
+@bot.tree.command(name="inventory", description="Check your RPG stats, gear & inventory")
+async def inventory(interaction: discord.Interaction):
+    p = get_player(interaction.user.id)
+    embed = discord.Embed(title=f"🎒 {interaction.user.name}'s Profile & Inventory", color=discord.Color.blue())
+    embed.add_field(name="📊 Level & EXP", value=f"Lvl {p['level']} ({p['exp']} EXP)", inline=True)
+    embed.add_field(name="💰 Gold", value=f"{p['gold']} G", inline=True)
+    embed.add_field(name="⚔️ Weapon", value=p['weapon'], inline=True)
+    embed.add_field(name="🛡️ Guild", value=p['guild'] if p['guild'] else "None", inline=True)
+    embed.add_field(name="🎒 Items", value=", ".join(p['inventory']) if p['inventory'] else "Empty", inline=False)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="shop", description="Buy weapons and potions")
+async def shop(interaction: discord.Interaction, item: str):
+    p = get_player(interaction.user.id)
+    shop_items = {
+        "iron_sword": {"name": "Iron Sword (+15 ATK)", "price": 200, "atk": 15},
+        "potion": {"name": "Health Potion", "price": 50, "type": "potion"}
+    }
+    
+    item_key = item.lower().replace(" ", "_")
+    if item_key not in shop_items:
+        await interaction.response.send_message("❌ Item not found! Available: `iron_sword` (200G), `potion` (50G)")
         return
-
-    boss_hp = 150
-    boss_name = "🔥 Red Dragon"
-    boss_damage = random.randint(30, 60)
-    player_damage = player["attack"] + random.randint(10, 30)
-    
-    player["hp"] -= boss_damage
-    
-    if player_damage >= boss_hp:
-        reward = 300
-        exp_reward = 100
-        player["gold"] += reward
-        leveled_up = add_exp(player, exp_reward)
-        save_data()
         
-        msg = f"🏆 **BOSS DEFEATED!** Slayed **{boss_name}**!\n💰 +{reward} Gold | ✨ +{exp_reward} EXP"
-        if leveled_up:
-            msg += f"\n🎉 **LEVEL UP!** You reached **Level {player['level']}**!"
-        await interaction.response.send_message(msg)
-    else:
-        if player["hp"] <= 0:
-            player["hp"] = 0
-            save_data()
-            await interaction.response.send_message(f"🔥 **{boss_name}** incinerated you for **{boss_damage}** damage! 💀")
-        else:
-            save_data()
-            await interaction.response.send_message(f"🛡️ Fought **{boss_name}**! Dealt **{player_damage}/{boss_hp}** DMG, took **{boss_damage}** DMG.")
-
-@bot.tree.command(name="heal", description="Restore full HP for 30 Gold")
-async def heal(interaction: discord.Interaction):
-    player = get_player(interaction.user.id)
-    cost = 30
-    if player["gold"] < cost:
-        await interaction.response.send_message(f"❌ You need **{cost} Gold** to heal!", ephemeral=True)
+    selected = shop_items[item_key]
+    if p["gold"] < selected["price"]:
+        await interaction.response.send_message("❌ You don't have enough gold!")
         return
-    player["gold"] -= cost
-    player["hp"] = player["max_hp"]
-    save_data()
-    await interaction.response.send_message(f"✨ {interaction.user.mention} restored full health!")
+        
+    p["gold"] -= selected["price"]
+    if "atk" in selected:
+        p["weapon"] = selected["name"]
+        p["atk"] += selected["atk"]
+    else:
+        p["inventory"].append(selected["name"])
+        
+    save_data(player_data)
+    await interaction.response.send_message(f"🛒 Bought **{selected['name']}**!")
 
-# Get token securely from environment variable
+# --- 3. GAMBLING ---
+@bot.tree.command(name="coinflip", description="Gamble gold on a coinflip")
+async def coinflip(interaction: discord.Interaction, bet: int, choice: str):
+    p = get_player(interaction.user.id)
+    choice = choice.lower()
+    
+    if bet <= 0 or bet > p["gold"]:
+        await interaction.response.send_message("❌ Invalid bet amount!")
+        return
+        
+    outcome = random.choice(["heads", "tails"])
+    if choice == outcome:
+        p["gold"] += bet
+        res = f"🎉 It was **{outcome}**! You won **{bet} Gold**!"
+    else:
+        p["gold"] -= bet
+        res = f"💀 It was **{outcome}**! You lost **{bet} Gold**!"
+        
+    save_data(player_data)
+    await interaction.response.send_message(res)
+
+# --- 4. BOSS RAIDS ---
+@bot.tree.command(name="boss_attack", description="Raid the server World Boss")
+async def boss_attack(interaction: discord.Interaction):
+    p = get_player(interaction.user.id)
+    if global_boss["hp"] <= 0:
+        await interaction.response.send_message("🏆 The boss is already defeated! Wait for respawn.")
+        return
+        
+    damage = random.randint(p["atk"], p["atk"] + 20)
+    global_boss["hp"] -= damage
+    
+    if global_boss["hp"] <= 0:
+        global_boss["hp"] = 0
+        p["gold"] += global_boss["reward"]
+        msg = f"💥 You dealt **{damage} DMG** and landed the **FINAL BLOW** on {global_boss['name']}! You received **{global_boss['reward']} Gold**! 🏆"
+        global_boss["hp"] = global_boss["max_hp"] # Respawn
+    else:
+        msg = f"⚔️ You dealt **{damage} DMG** to {global_boss['name']}! Remaining Boss HP: **{global_boss['hp']}/{global_boss['max_hp']}**"
+        
+    save_data(player_data)
+    await interaction.response.send_message(msg)
+
+# --- 5. GUILD SYSTEM ---
+@bot.tree.command(name="guild_create", description="Create a new Guild")
+async def guild_create(interaction: discord.Interaction, guild_name: str):
+    p = get_player(interaction.user.id)
+    if p["guild"]:
+        await interaction.response.send_message("❌ You are already in a guild!")
+        return
+        
+    if guild_name in guilds:
+        await interaction.response.send_message("❌ Guild name already exists!")
+        return
+        
+    guilds[guild_name] = {"owner": interaction.user.id, "members": [interaction.user.id]}
+    p["guild"] = guild_name
+    save_data(player_data)
+    await interaction.response.send_message(f"🏰 Guild **{guild_name}** created successfully!")
+
 TOKEN = os.getenv("DISCORD_TOKEN")
-
 bot.run(TOKEN)
