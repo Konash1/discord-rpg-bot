@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+import time
 
 # 30+ Achievements List
 ACHIEVEMENTS_LIST = [
@@ -101,7 +102,7 @@ class Quests(commands.Cog):
         )
         embed.add_field(
             name="📜 Quests & System",
-            value="`/quest` • `/claim_quest` • `/advancements` • `/claim_advancement` • `/ping` • `/bot_info` • `/help`",
+            value="`/quest` • `/claim_quest` • `/advancements` • `/claim_advancement` • `/ping` • `/info` • `/help`",
             inline=False
         )
 
@@ -156,7 +157,7 @@ class Quests(commands.Cog):
                     newly_unlocked.append(ach["name"])
 
         if newly_unlocked:
-            p["gold"] += total_reward
+            p["gold"] = p.get("gold", 0) + total_reward
             self.bot.save_player(p)
             
             names_str = "\n• " + "\n• ".join(newly_unlocked)
@@ -193,8 +194,23 @@ class Quests(commands.Cog):
     @app_commands.command(name="claim_quest", description="Claim daily quest gold bonus")
     async def claim_quest(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
+        current_time = int(time.time())
+        cooldown = 86400  # 24 hours
+
+        last_claim = p.get("last_quest_claim", 0)
+        if current_time - last_claim < cooldown:
+            remaining = cooldown - (current_time - last_claim)
+            hours = remaining // 3600
+            minutes = (remaining % 3600) // 60
+            await interaction.response.send_message(
+                f"⌛ You already claimed your daily quest reward! Try again in **{hours}h {minutes}m**.",
+                ephemeral=True
+            )
+            return
+
         reward = 250
-        p["gold"] += reward
+        p["gold"] = p.get("gold", 0) + reward
+        p["last_quest_claim"] = current_time
         self.bot.save_player(p)
 
         embed = discord.Embed(
@@ -211,7 +227,7 @@ class Quests(commands.Cog):
         embed = discord.Embed(title="🏓 Pong!", description=f"Bot Latency: `{latency} ms`", color=0x2ecc71)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# 7. /info (Renamed from bot_info to fix discord.py restriction)
+    # 7. /info
     @app_commands.command(name="info", description="View RPG server statistics and developer credits")
     async def info(self, interaction: discord.Interaction):
         total_players = self.bot.db_players.count_documents({})
