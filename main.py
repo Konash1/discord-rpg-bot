@@ -3,12 +3,16 @@ from discord.ext import commands
 import os
 import asyncio
 from pymongo import MongoClient
+from dotenv import load_dotenv
+
+# Load local environment variables from .env file
+load_dotenv()
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # --- MONGODB CONNECTION ---
-MONGO_URI = "mongodb+srv://lol369756_db_user:IpKu376J5NfGvDrX@cluster0.gfuarhe.mongodb.net/?appName=Cluster0"
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 client = MongoClient(MONGO_URI)
 db = client["rpg_bot_db"]
 bot.db_players = db["players"]
@@ -45,6 +49,7 @@ def get_player(user_id):
             "pet": None,
             "last_daily": 0,
             "last_work": 0,
+            "last_quest_claim": 0,
             "bounty": 0,
             "guild": None,
             "wins": 0,
@@ -77,7 +82,11 @@ async def main():
         await bot.load_extension("cogs.guilds")
         await bot.load_extension("cogs.minigames")
         await bot.load_extension("cogs.quests")
-        await bot.start(os.getenv("DISCORD_TOKEN"))
+        
+        token = os.getenv("DISCORD_TOKEN")
+        if not token:
+            raise ValueError("DISCORD_TOKEN is missing in environment variables!")
+        await bot.start(token)
 
 if __name__ == "__main__":
     asyncio.run(main())
