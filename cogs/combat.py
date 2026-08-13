@@ -75,13 +75,13 @@ class HuntResultView(discord.ui.View):
             await interaction.response.send_message(embed=embed, view=view)
 
 
-# Helper function to execute hunt logic and render embed safely
+# Helper function to execute hunt logic
 async def do_hunt_action(bot, interaction: discord.Interaction):
     p = bot.get_player(interaction.user.id)
     
-    # Check if player is knocked out
+    # Auto-revive check
     if p.get("hp", 100) <= 0:
-        p["hp"] = 20 # Auto-revive with 20 HP
+        p["hp"] = 20
         bot.save_player(p)
         death_msg = "💀 You were previously knocked out! The village doctor revived you with 20 HP."
         if interaction.response.is_done():
@@ -98,22 +98,27 @@ async def do_hunt_action(bot, interaction: discord.Interaction):
     ]
     monster = random.choice(monsters)
 
-    player_atk = p.get("base_atk", 10) + p.get("bonus_atk", 0)
-    buff_msg = ""
-    if p.get("skill_buff", False):
-        player_atk *= 2
-        p["skill_buff"] = False
-        buff_msg = "\n🔥 **Hellfire Nova Empowered Your Attack! (2x DMG)**"
+    # Pet Buff Calculations
+    pet_name = p.get("pet")
+    atk_buff = 10 if pet_name == "Shadow Wolf" else 0
+    exp_mult = 1.5 if pet_name == "Baby Dragon" else 1.0
+    gold_mult = 1.3 if pet_name == "Golden Cat" else 1.0
+    
+    # Phoenix Healing
+    phoenix_heal = ""
+    if pet_name == "Phoenix" and p.get("hp", 100) < p.get("max_hp", 100):
+        p["hp"] = min(p.get("max_hp", 100), p.get("hp", 100) + 15)
+        phoenix_heal = "\n🔥 **Phoenix healed you for +15 HP!**"
 
+    player_atk = p.get("base_atk", 10) + p.get("bonus_atk", 0) + atk_buff
     monster_hp = monster["hp"] - player_atk
 
     if monster_hp <= 0:
-        exp_gain = monster["exp"]
-        if p.get("pet"):
-            exp_gain = int(exp_gain * 1.5)
+        exp_gain = int(monster["exp"] * exp_mult)
+        gold_gain = int(monster["gold"] * gold_mult)
 
         p["exp"] = p.get("exp", 0) + exp_gain
-        p["gold"] = p.get("gold", 0) + monster["gold"]
+        p["gold"] = p.get("gold", 0) + gold_gain
 
         lvl_up = ""
         req_exp = p.get("level", 1) * 100
@@ -128,17 +133,16 @@ async def do_hunt_action(bot, interaction: discord.Interaction):
 
         embed = discord.Embed(
             title="⚔️ Monster Defeated!",
-            description=f"You slayed a **{monster['name']}** {monster['emoji']}!{buff_msg}{lvl_up}",
+            description=f"You slayed a **{monster['name']}** {monster['emoji']}!{phoenix_heal}{lvl_up}",
             color=0x2ecc71
         )
-        embed.add_field(name="💰 Gold", value=f"`+{monster['gold']} G`", inline=True)
+        embed.add_field(name="💰 Gold", value=f"`+{gold_gain} G`", inline=True)
         embed.add_field(name="⭐ EXP", value=f"`+{exp_gain} EXP`", inline=True)
         embed.set_footer(text=f"Level {p.get('level', 1)} | Total Gold: {p.get('gold', 0)} G")
     else:
         player_hp = max(0, p.get("hp", 100) - monster["atk"])
         p["hp"] = player_hp
         
-        # Revive warning if player died in battle
         death_note = ""
         if player_hp == 0:
             p["hp"] = 20
@@ -148,13 +152,12 @@ async def do_hunt_action(bot, interaction: discord.Interaction):
 
         embed = discord.Embed(
             title="⚔️ Battle Stalemate",
-            description=f"You dealt **{player_atk} DMG** to **{monster['name']}** {monster['emoji']}!\nMonster struck back dealing **{monster['atk']} DMG**! Remaining HP: `{p['hp']}/{p.get('max_hp', 100)}`{death_note}",
+            description=f"You dealt **{player_atk} DMG** to **{monster['name']}** {monster['emoji']}!\nMonster struck back dealing **{monster['atk']} DMG**! Remaining HP: `{p['hp']}/{p.get('max_hp', 100)}`{phoenix_heal}{death_note}",
             color=0xe67e22
         )
 
     view = HuntResultView(bot, interaction.user)
     
-    # Safe interaction response handling
     if interaction.response.is_done():
         await interaction.followup.send(embed=embed, view=view)
     else:
@@ -164,25 +167,22 @@ async def do_hunt_action(bot, interaction: discord.Interaction):
 class Combat(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.boss_db = bot.db_players.database["world_boss"]
+
+    def get_boss(self):
+        boss = self.boss_db.find_one({"_id": "global_boss"})
+        if not boss:
+            boss = {"_id": "global_boss", "name": "Ancient Red Dragon", "hp": 10000, "max_hp": 10000}
+            self.boss_db.insert_one(boss)
+        return boss
+
+    def save_boss(self, boss):
+        self.boss_db.replace_one({"_id": "global_boss"}, boss)
 
     # /hunt
     @app_commands.command(name="hunt", description="Hunt wild monsters for Gold and EXP")
     async def hunt(self, interaction: discord.Interaction):
         await do_hunt_action(self.bot, interaction)
-
-    # /skill
-    @app_commands.command(name="skill", description="Charge Hellfire Nova for 2x DMG on next Hunt!")
-    async def skill(self, interaction: discord.Interaction):
-        p = self.bot.get_player(interaction.user.id)
-        p["skill_buff"] = True
-        self.bot.save_player(p)
-
-        embed = discord.Embed(
-            title="🔥 Ultimate Skill Charged: Hellfire Nova",
-            description="You empowered your blade with **Hellfire Nova**!\nYour next **/hunt** will deal **2x DOUBLE DAMAGE**!",
-            color=0xe74c3c
-        )
-        await interaction.response.send_message(embed=embed)
 
     # /dungeon
     @app_commands.command(name="dungeon", description="Raid a high-risk dungeon for massive rewards")
@@ -210,20 +210,44 @@ class Combat(commands.Cog):
     # /boss
     @app_commands.command(name="boss", description="Check current status of Global World Boss")
     async def boss(self, interaction: discord.Interaction):
-        embed = discord.Embed(title="🐲 Global World Boss: Ancient Red Dragon", description="Health: `4,500 / 10,000 HP`\nUse `/boss_attack` to participate!", color=0x9b59b6)
+        b = self.get_boss()
+        embed = discord.Embed(
+            title=f"🐲 Global World Boss: {b['name']}",
+            description=f"Health: `{b['hp']:,} / {b['max_hp']:,} HP`\nUse `/boss_attack` to participate!",
+            color=0x9b59b6
+        )
         await interaction.response.send_message(embed=embed)
 
     # /boss_attack
     @app_commands.command(name="boss_attack", description="Attack Global World Boss for shared bounty")
     async def boss_attack(self, interaction: discord.Interaction):
+        b = self.get_boss()
+
+        if b["hp"] <= 0:
+            await interaction.response.send_message("🎉 The World Boss is already slain! Respawning soon...", ephemeral=True)
+            return
+
         p = self.bot.get_player(interaction.user.id)
         dmg = p.get("base_atk", 10) + p.get("bonus_atk", 0) + random.randint(10, 30)
-        gold_reward = dmg * 3
         
+        b["hp"] = max(0, b["hp"] - dmg)
+        gold_reward = dmg * 3
         p["gold"] = p.get("gold", 0) + gold_reward
+
+        slain_msg = ""
+        if b["hp"] == 0:
+            p["gold"] += 2000 # Bonus 2000 Gold for final blow
+            slain_msg = "\n🎉 **YOU LANDED THE FINAL BLOW!** Earned an extra **+2,000 Gold** bonus!\n🐲 A new Ancient Red Dragon has spawned!"
+            b["hp"] = b["max_hp"] # Reset boss HP
+
+        self.save_boss(b)
         self.bot.save_player(p)
 
-        embed = discord.Embed(title="🐲 Boss Raid Attack", description=f"Attacked the World Boss dealing **{dmg} DMG**!\nEarned **+{gold_reward} Gold**!", color=0xe74c3c)
+        embed = discord.Embed(
+            title="🐲 Boss Raid Attack",
+            description=f"Attacked **{b['name']}** dealing **{dmg} DMG**!\nEarned **+{gold_reward} Gold**!{slain_msg}\nRemaining HP: `{b['hp']:,} / {b['max_hp']:,}`",
+            color=0xe74c3c
+        )
         await interaction.response.send_message(embed=embed)
 
     # /pvp
