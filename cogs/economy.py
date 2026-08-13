@@ -18,7 +18,7 @@ class Economy(commands.Cog):
         raw_inv = p.get("inventory", [])
         cleaned_inv = [
             item for item in raw_inv 
-            if not ("Gold" in item or "G)" in item)
+            if isinstance(item, str) and not ("Gold" in item or "G)" in item)
         ]
         if len(cleaned_inv) != len(raw_inv):
             p["inventory"] = cleaned_inv
