@@ -4,6 +4,13 @@ from discord.ext import commands
 import time
 import random
 
+PETS = {
+    "1": {"name": "Baby Dragon", "cost": 500, "emoji": "🐲", "desc": "+50% bonus EXP from hunts"},
+    "2": {"name": "Golden Cat", "cost": 400, "emoji": "🐱", "desc": "+30% bonus Gold from hunts"},
+    "3": {"name": "Shadow Wolf", "cost": 600, "emoji": "🐺", "desc": "+10 bonus Attack power"},
+    "4": {"name": "Phoenix", "cost": 750, "emoji": "🔥", "desc": "Heals +15 HP after every hunt"}
+}
+
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -176,6 +183,58 @@ class Economy(commands.Cog):
             user_str = f"<@{pl['_id']}>"
             embed.add_field(name=f"#{idx} Place", value=f"{user_str} — `{total} Gold`", inline=False)
 
+        await interaction.response.send_message(embed=embed)
+
+    # /pet_list
+    @app_commands.command(name="pet_list", description="View available pets for adoption")
+    async def pet_list(self, interaction: discord.Interaction):
+        embed = discord.Embed(title="🐾 Pet Shelter & Adoption", color=0x9b59b6)
+        for key, pet in PETS.items():
+            embed.add_field(
+                name=f"{pet['emoji']} {pet['name']} (Option {key})",
+                value=f"**Cost:** `{pet['cost']} Gold`\n**Buff:** {pet['desc']}",
+                inline=False
+            )
+        embed.set_footer(text="Use /pet_adopt to pick your pet!")
+        await interaction.response.send_message(embed=embed)
+
+    # /pet_adopt
+    @app_commands.command(name="pet_adopt", description="Adopt a companion pet")
+    @app_commands.choices(pet_choice=[
+        app_commands.Choice(name="🐲 Baby Dragon (500 Gold - +50% EXP)", value="1"),
+        app_commands.Choice(name="🐱 Golden Cat (400 Gold - +30% Gold)", value="2"),
+        app_commands.Choice(name="🐺 Shadow Wolf (600 Gold - +10 ATK)", value="3"),
+        app_commands.Choice(name="🔥 Phoenix (750 Gold - Auto +15 HP Heal)", value="4")
+    ])
+    async def pet_adopt(self, interaction: discord.Interaction, pet_choice: str):
+        p = self.bot.get_player(interaction.user.id)
+
+        # Prevent double adoption
+        if p.get("pet"):
+            await interaction.response.send_message(
+                f"❌ You already own a companion pet (**{p['pet']}**)! Release or change it first.",
+                ephemeral=True
+            )
+            return
+
+        pet = PETS.get(pet_choice)
+        if not pet:
+            await interaction.response.send_message("❌ Invalid pet choice!", ephemeral=True)
+            return
+
+        if p.get("gold", 0) < pet["cost"]:
+            await interaction.response.send_message(f"❌ You need **{pet['cost']} Gold** to adopt {pet['name']}!", ephemeral=True)
+            return
+
+        p["gold"] -= pet["cost"]
+        p["pet"] = pet["name"]
+        self.bot.save_player(p)
+
+        embed = discord.Embed(
+            title="🐶 Pet Adopted!",
+            description=f"Adopted **{pet['name']}** {pet['emoji']}!\n**Effect:** {pet['desc']}",
+            color=0x2ecc71
+        )
         await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
