@@ -34,6 +34,14 @@ def get_player(user_id):
             "inventory": ["Health Potion"],
             "fish_count": 0,
             "ore_count": 0,
+            "crafted_potions": 0,
+            "coinflip_wins": 0,
+            "dice_wins": 0,
+            "slots_played": 0,
+            "jackpots": 0,
+            "gold_given": 0,
+            "commands_used": 0,
+            "unlocked_achievements": [],
             "pet": None,
             "last_daily": 0,
             "last_work": 0,
@@ -67,7 +75,8 @@ async def main():
         await bot.load_extension("cogs.economy")
         await bot.load_extension("cogs.combat")
         await bot.load_extension("cogs.guilds")
-        await bot.load_extension("cogs.minigames") # <--- Loaded Minigames Cog
+        await bot.load_extension("cogs.minigames")
+        await bot.load_extension("cogs.quests")
         await bot.start(os.getenv("DISCORD_TOKEN"))
 
 if __name__ == "__main__":
