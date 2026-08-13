@@ -1,4 +1,5 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 import os
 import asyncio
@@ -73,6 +74,33 @@ async def on_ready():
         print(f"Synced {len(synced)} slash command(s) across all modules!")
     except Exception as e:
         print(f"Failed to sync commands: {e}")
+
+# --- /info COMMAND ---
+@bot.tree.command(name="info", description="View RPG Bot information and system stats")
+async def info(interaction: discord.Interaction):
+    total_players = bot.db_players.count_documents({})
+    active_guilds = bot.db_guilds.count_documents({})
+    connected_servers = len(bot.guilds)
+
+    embed = discord.Embed(title="RPG Bot Info", color=0x3498db)
+    
+    embed.add_field(
+        name="Developer",
+        value="`Created by k0nash1`",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="System & Hosting",
+        value="• Powered by **Bot Hosting**\n• Database: **Mongo database**",
+        inline=False
+    )
+
+    embed.add_field(name="Registered Players", value=f"`{total_players}`", inline=True)
+    embed.add_field(name="Active Guilds", value=f"`{active_guilds}`", inline=True)
+    embed.add_field(name="Connected Servers", value=f"`{connected_servers}`", inline=True)
+
+    await interaction.response.send_message(embed=embed)
 
 # Register Cogs / Modules
 async def main():
