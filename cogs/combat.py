@@ -3,200 +3,198 @@ from discord import app_commands
 from discord.ext import commands
 import random
 
-# Global Boss state
-GLOBAL_BOSS = {"name": "Elder Shadow Dragon 🐉", "hp": 2500, "max_hp": 2500, "reward": 2500}
-
-def make_hp_bar(current, max_val, length=10):
-    percent = max(0, min(1.0, current / max_val))
-    filled = int(length * percent)
-    return "█" * filled + "░" * (length - filled)
-
 class Combat(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # 9. /hunt
-    @app_commands.command(name="hunt", description="Battle wild monsters for gold and experience")
+    # /hunt
+    @app_commands.command(name="hunt", description="Hunt wild monsters for Gold and EXP")
     async def hunt(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
         
         monsters = [
-            {"name": "Wild Slime 🧪", "min_gold": 15, "max_gold": 30, "exp": 20},
-            {"name": "Goblin Raider 👺", "min_gold": 30, "max_gold": 60, "exp": 40},
-            {"name": "Dire Wolf 🐺", "min_gold": 50, "max_gold": 90, "exp": 65},
-            {"name": "Skeleton Warrior 💀", "min_gold": 80, "max_gold": 130, "exp": 90}
+            {"name": "Wild Slime 🧪", "hp": 30, "atk": 5, "exp": 25, "gold": 40},
+            {"name": "Goblin Scout 👺", "hp": 50, "atk": 10, "exp": 45, "gold": 80},
+            {"name": "Forest Wolf 🐺", "hp": 80, "atk": 18, "exp": 70, "gold": 120},
+            {"name": "Cave Troll 👹", "hp": 130, "atk": 25, "exp": 110, "gold": 200}
         ]
-        
         monster = random.choice(monsters)
-        earned_gold = random.randint(monster["min_gold"], monster["max_gold"])
-        earned_exp = monster["exp"]
         
-        if p.get("pet"):
-            earned_exp = int(earned_exp * 1.5)
+        # Calculate Player ATK (Includes Skill Buff if active)
+        player_atk = p.get("base_atk", 10) + p.get("bonus_atk", 0)
+        buff_msg = ""
+        if p.get("skill_buff", False):
+            player_atk *= 2
+            p["skill_buff"] = False # Consume buff
+            buff_msg = "\n🔥 **Hellfire Nova Empowered Your Attack! (2x DMG)**"
 
-        p["gold"] += earned_gold
-        p["exp"] += earned_exp
-        
-        lvl_up_msg = ""
-        if p["exp"] >= p["level"] * 100:
-            p["level"] += 1
-            p["base_atk"] += 5
-            p["max_hp"] += 25
-            p["hp"] = p["max_hp"]
-            lvl_up_msg = f"\n\n🎉 **LEVEL UP!** Reached **Level {p['level']}**! *(+5 ATK, +25 HP)*"
-        
-        self.bot.save_player(p)
-        
-        embed = discord.Embed(title="⚔️ Monster Defeated!", description=f"You slayed a **{monster['name']}**!{lvl_up_msg}", color=0x2ecc71)
-        embed.add_field(name="💰 Gold", value=f"`+{earned_gold} G`", inline=True)
-        embed.add_field(name="⭐ EXP", value=f"`+{earned_exp} EXP`", inline=True)
-        embed.set_footer(text=f"Level {p['level']} | Total Gold: {p['gold']} G")
-        
-        await interaction.response.send_message(embed=embed)
+        # Combat Simulation
+        monster_hp = monster["hp"]
+        player_hp = p.get("hp", 100)
 
-    # 10. /dungeon
-    @app_commands.command(name="dungeon", description="Raid dangerous dungeon floors for high rewards")
-    async def dungeon(self, interaction: discord.Interaction, floor: int):
-        if floor < 1 or floor > 10:
-            await interaction.response.send_message("❌ Dungeon floor must be between 1 and 10!", ephemeral=True)
-            return
+        # Player hits monster
+        monster_hp -= player_atk
+
+        if monster_hp <= 0:
+            # Win
+            exp_gain = monster["exp"]
+            if p.get("pet"):
+                exp_gain = int(exp_gain * 1.5)
+
+            p["exp"] = p.get("exp", 0) + exp_gain
+            p["gold"] = p.get("gold", 0) + monster["gold"]
             
-        p = self.bot.get_player(interaction.user.id)
-        success_chance = max(10, 95 - (floor * 8))
-        
-        if random.randint(1, 100) <= success_chance:
-            gold_reward = floor * 200
-            exp_reward = floor * 75
-            p["gold"] += gold_reward
-            p["exp"] += exp_reward
+            # Level Up Check
+            lvl_up = ""
+            req_exp = p.get("level", 1) * 100
+            if p["exp"] >= req_exp:
+                p["level"] = p.get("level", 1) + 1
+                p["max_hp"] = p.get("max_hp", 100) + 25
+                p["hp"] = p["max_hp"]
+                p["base_atk"] = p.get("base_atk", 10) + 5
+                lvl_up = f"\n🎉 **LEVEL UP!** You reached **Level {p['level']}**!"
+
             self.bot.save_player(p)
-            
-            embed = discord.Embed(title=f"🏰 Dungeon Floor {floor} Cleared!", description=f"You successfully conquered Floor {floor}!", color=0x2ecc71)
-            embed.add_field(name="Rewards", value=f"💰 **+{gold_reward} Gold**\n⭐ **+{exp_reward} EXP**", inline=False)
+            embed = discord.Embed(title="⚔️ Victory!", description=f"You defeated **{monster['name']}**!{buff_msg}\n\n💰 Rewards: `+{monster['gold']} Gold` | `+{exp_gain} EXP`{lvl_up}", color=0x2ecc71)
         else:
-            loss_hp = floor * 10
-            p["hp"] = max(1, p["hp"] - loss_hp)
+            # Monster survives and hits back
+            player_hp -= monster["atk"]
+            p["hp"] = max(0, player_hp)
             self.bot.save_player(p)
-            
-            embed = discord.Embed(title=f"💀 Dungeon Floor {floor} Failed!", description=f"The dungeon monsters overpowered you! Lost **{loss_hp} HP**.", color=0xe74c3c)
-            
+            embed = discord.Embed(title="⚔️ Battle Stalemate", description=f"You dealt **{player_atk} DMG** to {monster['name']} (Left with {monster_hp} HP).{buff_msg}\nMonster struck back dealing **{monster['atk']} DMG**! Current HP: `{p['hp']}/{p['max_hp']}`", color=0xe67e22)
+
         await interaction.response.send_message(embed=embed)
 
-    # 11. /boss
-    @app_commands.command(name="boss", description="View the current World Boss status and health")
-    async def boss(self, interaction: discord.Interaction):
-        bar = make_hp_bar(GLOBAL_BOSS["hp"], GLOBAL_BOSS["max_hp"])
-        pct = int((GLOBAL_BOSS["hp"] / GLOBAL_BOSS["max_hp"]) * 100)
-        
-        embed = discord.Embed(
-            title=f"🔥 World Boss: {GLOBAL_BOSS['name']}",
-            description=f"**Health:** `{GLOBAL_BOSS['hp']}/{GLOBAL_BOSS['max_hp']}` ({pct}%)\n`[{bar}]`\n\nUse `/boss_attack` to join the raid!",
-            color=0xe74c3c
-        )
-        embed.add_field(name="🏆 Final Blow Reward", value=f"`{GLOBAL_BOSS['reward']} Gold`", inline=False)
-        await interaction.response.send_message(embed=embed)
-
-    # 12. /boss_attack
-    @app_commands.command(name="boss_attack", description="Deal heavy damage to the active World Boss")
-    async def boss_attack(self, interaction: discord.Interaction):
-        p = self.bot.get_player(interaction.user.id)
-        total_atk = p["base_atk"] + p["bonus_atk"] + (p["weapon_level"] * 5)
-        
-        dmg = random.randint(total_atk, total_atk + 35)
-        GLOBAL_BOSS["hp"] -= dmg
-        
-        if GLOBAL_BOSS["hp"] <= 0:
-            GLOBAL_BOSS["hp"] = GLOBAL_BOSS["max_hp"]
-            p["gold"] += GLOBAL_BOSS["reward"]
-            self.bot.save_player(p)
-            
-            embed = discord.Embed(title="💥 WORLD BOSS SLAIN!", description=f"**{interaction.user.name}** dealt the final blow and claimed **+{GLOBAL_BOSS['reward']} Gold**!", color=0xf1c40f)
-        else:
-            self.bot.save_player(p)
-            bar = make_hp_bar(GLOBAL_BOSS["hp"], GLOBAL_BOSS["max_hp"])
-            embed = discord.Embed(title="⚔️ Boss Strike", description=f"Dealt **{dmg} DMG** to {GLOBAL_BOSS['name']}!\n\n**HP:** `{GLOBAL_BOSS['hp']}/{GLOBAL_BOSS['max_hp']}`\n`[{bar}]`", color=0xe74c3c)
-            
-        await interaction.response.send_message(embed=embed)
-
-    # 13. /pvp
-    @app_commands.command(name="pvp", description="Challenge another player to a wagered duel")
-    async def pvp(self, interaction: discord.Interaction, opponent: discord.User, wager: int):
-        if opponent.id == interaction.user.id:
-            await interaction.response.send_message("❌ You cannot fight yourself!", ephemeral=True)
-            return
-            
-        p1 = self.bot.get_player(interaction.user.id)
-        p2 = self.bot.get_player(opponent.id)
-        
-        if wager <= 0 or p1["gold"] < wager or p2["gold"] < wager:
-            await interaction.response.send_message("❌ One of you doesn't have enough wallet gold for that wager!", ephemeral=True)
-            return
-            
-        winner = random.choice([interaction.user, opponent])
-        loser = opponent if winner == interaction.user else interaction.user
-        
-        w_p = self.bot.get_player(winner.id)
-        l_p = self.bot.get_player(loser.id)
-        
-        w_p["gold"] += wager
-        w_p["wins"] += 1
-        l_p["gold"] -= wager
-        l_p["losses"] += 1
-        
-        self.bot.save_player(w_p)
-        self.bot.save_player(l_p)
-        
-        embed = discord.Embed(title="⚔️ PvP Duel Results", description=f"**{winner.name}** defeated **{loser.name}** in combat and took **{wager} Gold**!", color=0x9b59b6)
-        await interaction.response.send_message(embed=embed)
-
-    # 14. /forge
-    @app_commands.command(name="forge", description="Attempt to upgrade your equipped weapon level")
-    async def forge(self, interaction: discord.Interaction):
-        p = self.bot.get_player(interaction.user.id)
-        cost = (p["weapon_level"] + 1) * 150
-        
-        if p["gold"] < cost:
-            await interaction.response.send_message(f"❌ Weapon upgrade costs **{cost} Gold**!", ephemeral=True)
-            return
-            
-        p["gold"] -= cost
-        success_rate = max(25, 85 - (p["weapon_level"] * 10))
-        
-        if random.randint(1, 100) <= success_rate:
-            p["weapon_level"] += 1
-            embed = discord.Embed(title="✨ Forge Success!", description=f"Upgraded weapon to **+{p['weapon_level']}** *(+5 ATK)*!", color=0xf1c40f)
-        else:
-            embed = discord.Embed(title="💥 Forge Failed!", description="The upgrade attempt failed and materials were lost.", color=0xe74c3c)
-            
-        self.bot.save_player(p)
-        await interaction.response.send_message(embed=embed)
-
-    # 15. /bounty
-    @app_commands.command(name="bounty", description="Place a bounty hit on another player")
-    async def bounty(self, interaction: discord.Interaction, target: discord.User, amount: int):
-        p1 = self.bot.get_player(interaction.user.id)
-        p2 = self.bot.get_player(target.id)
-        
-        if amount <= 0 or p1["gold"] < amount:
-            await interaction.response.send_message("❌ Insufficient gold balance!", ephemeral=True)
-            return
-            
-        p1["gold"] -= amount
-        p2["bounty"] += amount
-        self.bot.save_player(p1)
-        self.bot.save_player(p2)
-        
-        embed = discord.Embed(title="🎯 Bounty Placed", description=f"Placed a **{amount} Gold** bounty on {target.name}!", color=0xe74c3c)
-        await interaction.response.send_message(embed=embed)
-
-    # 16. /skill
-    @app_commands.command(name="skill", description="Unleash a class special skill")
+    # /skill
+    @app_commands.command(name="skill", description="Charge your Ultimate Skill to deal 2x DMG on your next Hunt or PvP!")
     async def skill(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
-        total_atk = p["base_atk"] + p["bonus_atk"] + (p["weapon_level"] * 5)
-        dmg = total_atk * 2
+        p["skill_buff"] = True
+        self.bot.save_player(p)
+
+        embed = discord.Embed(
+            title="🔥 Ultimate Skill Charged: Hellfire Nova",
+            description="You empowered your blade with **Hellfire Nova**!\nYour next **/hunt** or **/pvp** will deal **2x DOUBLE DAMAGE**!",
+            color=0xe74c3c
+        )
+        await interaction.response.send_message(embed=embed)
+
+    # /dungeon
+    @app_commands.command(name="dungeon", description="Raid a high-risk dungeon for massive rewards")
+    async def dungeon(self, interaction: discord.Interaction):
+        p = self.bot.get_player(interaction.user.id)
+        if p.get("hp", 100) < 30:
+            await interaction.response.send_message("❌ Your HP is too low! Use `/use` to drink a Health Potion.", ephemeral=True)
+            return
+
+        success = random.choice([True, False])
+        if success:
+            gold_gain = random.randint(200, 500)
+            exp_gain = 150
+            p["gold"] = p.get("gold", 0) + gold_gain
+            p["exp"] = p.get("exp", 0) + exp_gain
+            self.bot.save_player(p)
+            embed = discord.Embed(title="🏰 Dungeon Conquered!", description=f"Cleared the dungeon floors and found **+{gold_gain} Gold** & **+{exp_gain} EXP**!", color=0x2ecc71)
+        else:
+            p["hp"] = max(5, p.get("hp", 100) - 40)
+            self.bot.save_player(p)
+            embed = discord.Embed(title="🏰 Dungeon Defeat", description=f"You were overwhelmed by dungeon traps! Lost **40 HP** (`{p['hp']}/{p['max_hp']}` left).", color=0xe74c3c)
+
+        await interaction.response.send_message(embed=embed)
+
+    # /boss
+    @app_commands.command(name="boss", description="Check current status of Global World Boss")
+    async def boss(self, interaction: discord.Interaction):
+        embed = discord.Embed(title="🐲 Global World Boss: Ancient Red Dragon", description="Health: `4,500 / 10,000 HP`\nUse `/boss_attack` to participate in raid!", color=0x9b59b6)
+        await interaction.response.send_message(embed=embed)
+
+    # /boss_attack
+    @app_commands.command(name="boss_attack", description="Attack Global World Boss for shared bounty")
+    async def boss_attack(self, interaction: discord.Interaction):
+        p = self.bot.get_player(interaction.user.id)
+        dmg = p.get("base_atk", 10) + p.get("bonus_atk", 0) + random.randint(10, 30)
+        gold_reward = dmg * 3
         
-        embed = discord.Embed(title="🔥 Ultimate Skill: Hellfire Nova", description=f"Cast Hellfire Nova dealing **{dmg} DMG** to enemies!", color=0xe67e22)
+        p["gold"] = p.get("gold", 0) + gold_reward
+        self.bot.save_player(p)
+
+        embed = discord.Embed(title="🐲 Boss Raid Attack", description=f"You attacked the World Boss dealing **{dmg} DMG**!\nEarned **+{gold_reward} Gold** based on your performance!", color=0xe74c3c)
+        await interaction.response.send_message(embed=embed)
+
+    # /pvp
+    @app_commands.command(name="pvp", description="Duel another player for gold")
+    async def pvp(self, interaction: discord.Interaction, target: discord.User):
+        if target.id == interaction.user.id:
+            await interaction.response.send_message("❌ You cannot duel yourself!", ephemeral=True)
+            return
+
+        p1 = self.bot.get_player(interaction.user.id)
+        p2 = self.bot.get_player(target.id)
+
+        p1_atk = p1.get("base_atk", 10) + p1.get("bonus_atk", 0)
+        p2_atk = p2.get("base_atk", 10) + p2.get("bonus_atk", 0)
+
+        if p1_atk >= p2_atk:
+            winner, loser = p1, p2
+            winner_user, loser_user = interaction.user, target
+        else:
+            winner, loser = p2, p1
+            winner_user, loser_user = target, interaction.user
+
+        winner["gold"] = winner.get("gold", 0) + 100
+        winner["wins"] = winner.get("wins", 0) + 1
+        loser["losses"] = loser.get("losses", 0) + 1
+
+        self.bot.save_player(winner)
+        self.bot.save_player(loser)
+
+        embed = discord.Embed(title="⚔️ PvP Duel Outcome", description=f"**{winner_user.name}** defeated **{loser_user.name}** in combat and won **+100 Gold**!", color=0xf1c40f)
+        await interaction.response.send_message(embed=embed)
+
+    # /forge
+    @app_commands.command(name="forge", description="Upgrade your currently equipped weapon")
+    async def forge(self, interaction: discord.Interaction):
+        p = self.bot.get_player(interaction.user.id)
+        cost = 100 * (p.get("weapon_level", 0) + 1)
+
+        if p.get("gold", 0) < cost:
+            await interaction.response.send_message(f"❌ Forging costs **{cost} Gold**!", ephemeral=True)
+            return
+
+        p["gold"] -= cost
+        success = random.random() < 0.70
+
+        if success:
+            p["weapon_level"] = p.get("weapon_level", 0) + 1
+            p["bonus_atk"] = p.get("bonus_atk", 0) + 5
+            self.bot.save_player(p)
+            embed = discord.Embed(title="🔨 Forge Success!", description=f"Upgraded weapon to **+{p['weapon_level']}**! Bonus ATK increased to **+{p['bonus_atk']}**.", color=0x2ecc71)
+        else:
+            self.bot.save_player(p)
+            embed = discord.Embed(title="🔨 Forge Failed", description="The blacksmith failed to upgrade your weapon! Gold was lost.", color=0xe74c3c)
+
+        await interaction.response.send_message(embed=embed)
+
+    # /bounty
+    @app_commands.command(name="bounty", description="Place a bounty on a player")
+    async def bounty(self, interaction: discord.Interaction, target: discord.User, amount: int):
+        if amount < 50:
+            await interaction.response.send_message("❌ Minimum bounty is 50 Gold!", ephemeral=True)
+            return
+
+        p = self.bot.get_player(interaction.user.id)
+        if p.get("gold", 0) < amount:
+            await interaction.response.send_message("❌ Insufficient gold!", ephemeral=True)
+            return
+
+        p["gold"] -= amount
+        target_p = self.bot.get_player(target.id)
+        target_p["bounty"] = target_p.get("bounty", 0) + amount
+
+        self.bot.save_player(p)
+        self.bot.save_player(target_p)
+
+        embed = discord.Embed(title="🎯 Bounty Placed", description=f"Placed a **{amount} Gold** bounty on {target.name}!", color=0xe74c3c)
         await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
