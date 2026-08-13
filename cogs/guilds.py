@@ -226,20 +226,5 @@ class Guilds(commands.Cog):
         embed = discord.Embed(title="🧪 Item Consumed", description=desc, color=0x3498db)
         await interaction.response.send_message(embed=embed)
 
-    # /pet_adopt
-    @app_commands.command(name="pet_adopt", description="Adopt a companion pet (+50% EXP boost) for 500 Gold")
-    async def pet_adopt(self, interaction: discord.Interaction):
-        p = self.bot.get_player(interaction.user.id)
-        if p.get("gold", 0) < 500:
-            await interaction.response.send_message("❌ Pets cost 500 Gold!", ephemeral=True)
-            return
-            
-        p["gold"] -= 500
-        p["pet"] = "Baby Dragon 🐉"
-        self.bot.save_player(p)
-        
-        embed = discord.Embed(title="🐶 Pet Adopted", description="Adopted **Baby Dragon 🐉**! Grants **+50% bonus EXP** from hunts.", color=0x9b59b6)
-        await interaction.response.send_message(embed=embed)
-
 async def setup(bot):
     await bot.add_cog(Guilds(bot))
