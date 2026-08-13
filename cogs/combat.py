@@ -278,7 +278,7 @@ class Combat(commands.Cog):
             p["weapon_level"] = p.get("weapon_level", 0) + 1
             p["bonus_atk"] = p.get("bonus_atk", 0) + 5
             self.bot.save_player(p)
-            embed = discord.Embed(title="🔨 Forge Success!", description=f"Upgraded **{p['weapon']}** to **+{p['weapon_level']}**!\nBonus ATK increased to **+{p['bonus_atk']}**.", color=02ecc71)
+            embed = discord.Embed(title="🔨 Forge Success!", description=f"Upgraded **{p['weapon']}** to **+{p['weapon_level']}**!\nBonus ATK increased to **+{p['bonus_atk']}**.", color=0x2ecc71)
         else:
             self.bot.save_player(p)
             embed = discord.Embed(title="🔨 Forge Failed", description="The blacksmith failed to upgrade your weapon! Gold was lost.", color=0xe74c3c)
