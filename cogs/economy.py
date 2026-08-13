@@ -8,145 +8,166 @@ class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # 1. /profile
-    @app_commands.command(name="profile", description="View your detailed RPG character profile and stats")
-    async def profile(self, interaction: discord.Interaction):
-        p = self.bot.get_player(interaction.user.id)
-        total_atk = p["base_atk"] + p["bonus_atk"] + (p["weapon_level"] * 5)
+    # /profile
+    @app_commands.command(name="profile", description="View your RPG character card and stats")
+    async def profile(self, interaction: discord.Interaction, user: discord.User = None):
+        target = user or interaction.user
+        p = self.bot.get_player(target.id)
+
+        embed = discord.Embed(title=f"🛡️ Profile — {target.name}", color=0x3498db)
+        embed.set_thumbnail(url=target.display_avatar.url)
+        embed.add_field(name="Level", value=f"`Lvl {p.get('level', 1)}` (`{p.get('exp', 0)} EXP`)", inline=True)
+        embed.add_field(name="Wallet Gold", value=f"`{p.get('gold', 0)} G`", inline=True)
+        embed.add_field(name="Bank Gold", value=f"`{p.get('bank', 0)} G`", inline=True)
         
-        embed = discord.Embed(title=f"🛡️ Character Profile — {interaction.user.name}", color=0x3498db)
-        embed.add_field(
-            name="📊 Combat Stats", 
-            value=f"**Level:** {p['level']}\n**EXP:** {p['exp']}/{p['level']*100}\n**HP:** {p['hp']}/{p['max_hp']}\n**Total ATK:** {total_atk}", 
-            inline=True
-        )
-        embed.add_field(
-            name="💼 Wealth & Guild", 
-            value=f"**Wallet:** {p['gold']} G\n**Bank:** {p['bank']} G\n**Bounty:** {p['bounty']} G\n**Guild:** {p['guild'] or 'None'}", 
-            inline=True
-        )
-        embed.add_field(
-            name="⚔️ Gear & Assets", 
-            value=f"**Weapon:** {p['weapon']} `(+{p['weapon_level']})`\n**Armor:** {p['armor']}\n**Pet:** {p['pet'] or 'None'}\n**Fish:** {p['fish_count']} 🐟 | **Ores:** {p['ore_count']} 💎", 
-            inline=False
-        )
+        hp = p.get('hp', 100)
+        max_hp = p.get('max_hp', 100)
+        base_atk = p.get('base_atk', 10)
+        bonus_atk = p.get('bonus_atk', 0)
         
-        inv_str = ", ".join([f"`{item}`" for item in p['inventory']]) if p['inventory'] else "*Empty*"
-        embed.add_field(name="🎒 Backpack", value=inv_str, inline=False)
-        embed.set_footer(text=f"Duels Won: {p['wins']} | Lost: {p['losses']}")
+        embed.add_field(name="Health (HP)", value=f"`{hp}/{max_hp}`", inline=True)
+        embed.add_field(name="Attack (ATK)", value=f"`{base_atk + bonus_atk}` (`{base_atk}` + `{bonus_atk}`)", inline=True)
+        embed.add_field(name="Equipped Weapon", value=f"`{p.get('weapon', 'None')}`", inline=True)
+        embed.add_field(name="Guild", value=f"`{p.get('guild') or 'None'}`", inline=True)
+        embed.add_field(name="Pet", value=f"`{p.get('pet') or 'None'}`", inline=True)
+        embed.add_field(name="PvP Record", value=f"`{p.get('wins', 0)}W - {p.get('losses', 0)}L`", inline=True)
         
+        inv = p.get("inventory", [])
+        inv_str = ", ".join(inv) if inv else "Empty"
+        embed.add_field(name="Backpack Items", value=f"`{inv_str}`", inline=False)
+
         await interaction.response.send_message(embed=embed)
 
-    # 2. /balance
+    # /balance
     @app_commands.command(name="balance", description="Check your wallet and bank gold balance")
     async def balance(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
-        embed = discord.Embed(title=f"💰 Balance — {interaction.user.name}", color=0xf1c40f)
-        embed.add_field(name="Wallet Gold", value=f"`{p['gold']} G`", inline=True)
-        embed.add_field(name="Bank Deposit", value=f"`{p['bank']} G`", inline=True)
-        embed.add_field(name="Net Worth", value=f"`{p['gold'] + p['bank']} G`", inline=False)
+        embed = discord.Embed(title="💰 Financial Balance", color=0xf1c40f)
+        embed.add_field(name="Wallet Gold", value=f"`{p.get('gold', 0)} G`", inline=True)
+        embed.add_field(name="Bank Gold", value=f"`{p.get('bank', 0)} G`", inline=True)
         await interaction.response.send_message(embed=embed)
 
-    # 3. /daily
-    @app_commands.command(name="daily", description="Claim your 24-hour daily gold allowance")
+    # /daily
+    @app_commands.command(name="daily", description="Claim your daily gold reward (24h cooldown)")
     async def daily(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
         now = time.time()
-        if now - p["last_daily"] < 86400:
-            remaining = int((86400 - (now - p["last_daily"])) / 3600)
-            await interaction.response.send_message(f"⏳ Daily reward on cooldown! Try again in `{remaining} hours`.", ephemeral=True)
+        last_daily = p.get("last_daily", 0)
+        
+        if now - last_daily < 86400:
+            remaining = int((86400 - (now - last_daily)) / 3600)
+            await interaction.response.send_message(f"⌛ Daily reward on cooldown! Wait **{remaining} hours**.", ephemeral=True)
             return
-            
-        p["gold"] += 350
+
+        reward = 300 + (p.get("level", 1) * 20)
+        p["gold"] = p.get("gold", 0) + reward
         p["last_daily"] = now
         self.bot.save_player(p)
-        
-        embed = discord.Embed(title="🎁 Daily Reward Claimed", description="You received **+350 Gold**!", color=0x2ecc71)
+
+        embed = discord.Embed(title="🎁 Daily Claimed!", description=f"You received **+{reward} Gold**!", color=0x2ecc71)
         await interaction.response.send_message(embed=embed)
 
-    # 4. /work
-    @app_commands.command(name="work", description="Do odd jobs around town for gold (1 Hour Cooldown)")
+    # /work
+    @app_commands.command(name="work", description="Do odd jobs to earn quick cash (1h cooldown)")
     async def work(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
         now = time.time()
-        if now - p["last_work"] < 3600:
-            remaining = int((3600 - (now - p["last_work"])) / 60)
-            await interaction.response.send_message(f"⏳ You are tired! Rest for `{remaining} minutes` before working again.", ephemeral=True)
+        last_work = p.get("last_work", 0)
+
+        if now - last_work < 3600:
+            remaining = int((3600 - (now - last_work)) / 60)
+            await interaction.response.send_message(f"⌛ You're tired! Wait **{remaining} minutes** before working again.", ephemeral=True)
             return
-            
-        jobs = ["repaired tavern tables", "cleaned the blacksmith forge", "guarded the city gate", "harvested wheat"]
-        earned = random.randint(50, 120)
-        job = random.choice(jobs)
-        
-        p["gold"] += earned
+
+        earned = random.randint(50, 150)
+        p["gold"] = p.get("gold", 0) + earned
         p["last_work"] = now
         self.bot.save_player(p)
-        
-        embed = discord.Embed(title="🔨 Work Shift Complete", description=f"You {job} and earned **+{earned} Gold**!", color=0x3498db)
+
+        jobs = ["cleared dungeon rubble", "trained village guards", "repaired weapons for local heroes", "brewed potion ingredients"]
+        job = random.choice(jobs)
+
+        embed = discord.Embed(title="💼 Hard Work Pays Off", description=f"You {job} and earned **+{earned} Gold**!", color=0x3498db)
         await interaction.response.send_message(embed=embed)
 
-    # 5. /deposit
-    @app_commands.command(name="deposit", description="Deposit wallet gold safely into your bank account")
+    # /deposit
+    @app_commands.command(name="deposit", description="Deposit gold from wallet to secure bank")
     async def deposit(self, interaction: discord.Interaction, amount: int):
         p = self.bot.get_player(interaction.user.id)
-        if amount <= 0 or amount > p["gold"]:
-            await interaction.response.send_message("❌ Invalid deposit amount!", ephemeral=True)
+        gold = p.get("gold", 0)
+
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be greater than 0!", ephemeral=True)
             return
-            
-        p["gold"] -= amount
-        p["bank"] += amount
+        if gold < amount:
+            await interaction.response.send_message("❌ You don't have enough wallet gold!", ephemeral=True)
+            return
+
+        p["gold"] = gold - amount
+        p["bank"] = p.get("bank", 0) + amount
         self.bot.save_player(p)
-        
-        embed = discord.Embed(title="🏦 Bank Deposit", description=f"Deposited **{amount} Gold** into your bank account.", color=0x2ecc71)
+
+        embed = discord.Embed(title="🏦 Bank Deposit", description=f"Deposited **{amount} Gold** into your bank account!", color=0x2ecc71)
         await interaction.response.send_message(embed=embed)
 
-    # 6. /withdraw
-    @app_commands.command(name="withdraw", description="Withdraw gold from your bank account to your wallet")
+    # /withdraw
+    @app_commands.command(name="withdraw", description="Withdraw gold from bank to wallet")
     async def withdraw(self, interaction: discord.Interaction, amount: int):
         p = self.bot.get_player(interaction.user.id)
-        if amount <= 0 or amount > p["bank"]:
-            await interaction.response.send_message("❌ Invalid withdrawal amount!", ephemeral=True)
+        bank = p.get("bank", 0)
+
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be greater than 0!", ephemeral=True)
             return
-            
-        p["bank"] -= amount
-        p["gold"] += amount
+        if bank < amount:
+            await interaction.response.send_message("❌ You don't have enough bank gold!", ephemeral=True)
+            return
+
+        p["bank"] = bank - amount
+        p["gold"] = p.get("gold", 0) + amount
         self.bot.save_player(p)
-        
-        embed = discord.Embed(title="🏧 Bank Withdrawal", description=f"Withdrew **{amount} Gold** from your bank account.", color=0x2ecc71)
+
+        embed = discord.Embed(title="🏦 Bank Withdrawal", description=f"Withdrew **{amount} Gold** from your bank account!", color=0xe74c3c)
         await interaction.response.send_message(embed=embed)
 
-    # 7. /pay
-    @app_commands.command(name="pay", description="Transfer gold from your wallet to another player")
+    # /pay
+    @app_commands.command(name="pay", description="Transfer wallet gold to another player")
     async def pay(self, interaction: discord.Interaction, target: discord.User, amount: int):
         if target.id == interaction.user.id:
             await interaction.response.send_message("❌ You cannot send gold to yourself!", ephemeral=True)
             return
-            
-        p1 = self.bot.get_player(interaction.user.id)
-        p2 = self.bot.get_player(target.id)
-        
-        if amount <= 0 or p1["gold"] < amount:
-            await interaction.response.send_message("❌ You do not have enough wallet gold!", ephemeral=True)
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be greater than 0!", ephemeral=True)
             return
-            
-        p1["gold"] -= amount
-        p2["gold"] += amount
-        self.bot.save_player(p1)
-        self.bot.save_player(p2)
-        
-        embed = discord.Embed(title="💸 Gold Transferred", description=f"Sent **{amount} Gold** to {target.name}!", color=0x9b59b6)
+
+        sender = self.bot.get_player(interaction.user.id)
+        if sender.get("gold", 0) < amount:
+            await interaction.response.send_message("❌ Insufficient wallet gold!", ephemeral=True)
+            return
+
+        receiver = self.bot.get_player(target.id)
+        sender["gold"] -= amount
+        receiver["gold"] = receiver.get("gold", 0) + amount
+        sender["gold_given"] = sender.get("gold_given", 0) + amount
+
+        self.bot.save_player(sender)
+        self.bot.save_player(receiver)
+
+        embed = discord.Embed(title="💸 Direct Transfer", description=f"Transferred **{amount} Gold** to {target.name}!", color=0x9b59b6)
         await interaction.response.send_message(embed=embed)
 
-    # 8. /leaderboard
-    @app_commands.command(name="leaderboard", description="View top 10 richest players across all servers")
+    # /leaderboard
+    @app_commands.command(name="leaderboard", description="View top 5 richest players in the bot database")
     async def leaderboard(self, interaction: discord.Interaction):
-        top_players = list(self.bot.db_players.find().sort("gold", -1).limit(10))
-        description = ""
-        for idx, player in enumerate(top_players, 1):
-            total_net = player.get("gold", 0) + player.get("bank", 0)
-            description += f"**#{idx}** <@{player['_id']}> — `{total_net} G` *(Lvl {player.get('level', 1)})*\n"
-            
-        embed = discord.Embed(title="🏆 Global Wealth Leaderboard", description=description or "No recorded players yet.", color=0xf1c40f)
+        players = list(self.bot.db_players.find())
+        players.sort(key=lambda x: x.get("gold", 0) + x.get("bank", 0), reverse=True)
+
+        embed = discord.Embed(title="🏆 Global Wealth Leaderboard", color=0xf1c40f)
+        for idx, pl in enumerate(players[:5], start=1):
+            total = pl.get("gold", 0) + pl.get("bank", 0)
+            user_str = f"<@{pl['_id']}>"
+            embed.add_field(name=f"#{idx} Place", value=f"{user_str} — `{total} Gold`", inline=False)
+
         await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
