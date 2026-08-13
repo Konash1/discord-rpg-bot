@@ -2,19 +2,38 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+# Expanded Shop Catalog with 12 Unique Weapons
 SHOP_ITEMS = {
+    # Consumables
     "potion": {"name": "Health Potion", "price": 50, "type": "consumable"},
     "exp_scroll": {"name": "EXP Scroll", "price": 150, "type": "consumable"},
+    
+    # Tier 1 Weapons
     "dagger": {"name": "Steel Dagger (+10 ATK)", "price": 100, "type": "weapon", "atk": 10},
+    "mace": {"name": "Heavy Mace (+18 ATK)", "price": 180, "type": "weapon", "atk": 18},
     "iron_sword": {"name": "Iron Sword (+25 ATK)", "price": 250, "type": "weapon", "atk": 25},
-    "obsidian_blade": {"name": "Obsidian Blade (+50 ATK)", "price": 600, "type": "weapon", "atk": 50}
+    
+    # Tier 2 Weapons
+    "spear": {"name": "Hunter Spear (+35 ATK)", "price": 400, "type": "weapon", "atk": 35},
+    "obsidian_blade": {"name": "Obsidian Blade (+50 ATK)", "price": 600, "type": "weapon", "atk": 50},
+    "battle_axe": {"name": "Berserker Battleaxe (+70 ATK)", "price": 900, "type": "weapon", "atk": 70},
+    
+    # Tier 3 Weapons
+    "katana": {"name": "Shadow Katana (+90 ATK)", "price": 1300, "type": "weapon", "atk": 90},
+    "halberd": {"name": "Dragon Halberd (+120 ATK)", "price": 1800, "type": "weapon", "atk": 120},
+    "rune_blade": {"name": "Rune Greatsword (+160 ATK)", "price": 2500, "type": "weapon", "atk": 160},
+    
+    # Mythic Weapons
+    "excalibur": {"name": "Holy Excalibur (+220 ATK)", "price": 4000, "type": "weapon", "atk": 220},
+    "scythe": {"name": "Reaper Grim Scythe (+300 ATK)", "price": 6500, "type": "weapon", "atk": 300},
+    "void_blade": {"name": "Void vanquisher (+450 ATK)", "price": 10000, "type": "weapon", "atk": 450}
 }
 
 class Guilds(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # 17. /guild_create
+    # /guild_create
     @app_commands.command(name="guild_create", description="Found a new guild for 500 Gold")
     async def guild_create(self, interaction: discord.Interaction, name: str):
         p = self.bot.get_player(interaction.user.id)
@@ -46,7 +65,7 @@ class Guilds(commands.Cog):
         embed = discord.Embed(title="🛡️ Guild Founded!", description=f"You successfully created **{name}**!", color=0x9b59b6)
         await interaction.response.send_message(embed=embed)
 
-    # 18. /guild_join
+    # /guild_join
     @app_commands.command(name="guild_join", description="Join an existing guild")
     async def guild_join(self, interaction: discord.Interaction, name: str):
         p = self.bot.get_player(interaction.user.id)
@@ -68,7 +87,7 @@ class Guilds(commands.Cog):
         embed = discord.Embed(title="🛡️ Guild Joined", description=f"You joined **{name}**!", color=0x3498db)
         await interaction.response.send_message(embed=embed)
 
-    # 19. /guild_leave
+    # /guild_leave
     @app_commands.command(name="guild_leave", description="Leave your current guild")
     async def guild_leave(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
@@ -89,7 +108,7 @@ class Guilds(commands.Cog):
         embed = discord.Embed(title="🛡️ Guild Left", description=f"You left **{old_guild_name}**.", color=0xe74c3c)
         await interaction.response.send_message(embed=embed)
 
-    # 20. /guild_info
+    # /guild_info
     @app_commands.command(name="guild_info", description="Check details and members of a guild")
     async def guild_info(self, interaction: discord.Interaction, name: str):
         guild = self.bot.db_guilds.find_one({"_id": name})
@@ -103,14 +122,23 @@ class Guilds(commands.Cog):
         embed.add_field(name="Guild Vault", value=f"`{guild['vault']} Gold`", inline=True)
         await interaction.response.send_message(embed=embed)
 
-    # 21. /shop
-    @app_commands.command(name="shop", description="Browse and buy gear/items from the RPG Shop")
+    # /shop
+    @app_commands.command(name="shop", description="Browse and buy weapons or consumables from the Armory")
     @app_commands.choices(item=[
         app_commands.Choice(name="Health Potion (50 G)", value="potion"),
         app_commands.Choice(name="EXP Scroll (150 G)", value="exp_scroll"),
         app_commands.Choice(name="Steel Dagger (+10 ATK) (100 G)", value="dagger"),
+        app_commands.Choice(name="Heavy Mace (+18 ATK) (180 G)", value="mace"),
         app_commands.Choice(name="Iron Sword (+25 ATK) (250 G)", value="iron_sword"),
-        app_commands.Choice(name="Obsidian Blade (+50 ATK) (600 G)", value="obsidian_blade")
+        app_commands.Choice(name="Hunter Spear (+35 ATK) (400 G)", value="spear"),
+        app_commands.Choice(name="Obsidian Blade (+50 ATK) (600 G)", value="obsidian_blade"),
+        app_commands.Choice(name="Berserker Battleaxe (+70 ATK) (900 G)", value="battle_axe"),
+        app_commands.Choice(name="Shadow Katana (+90 ATK) (1,300 G)", value="katana"),
+        app_commands.Choice(name="Dragon Halberd (+120 ATK) (1,800 G)", value="halberd"),
+        app_commands.Choice(name="Rune Greatsword (+160 ATK) (2,500 G)", value="rune_blade"),
+        app_commands.Choice(name="Holy Excalibur (+220 ATK) (4,000 G)", value="excalibur"),
+        app_commands.Choice(name="Reaper Grim Scythe (+300 ATK) (6,500 G)", value="scythe"),
+        app_commands.Choice(name="Void Vanquisher (+450 ATK) (10,000 G)", value="void_blade")
     ])
     async def shop(self, interaction: discord.Interaction, item: app_commands.Choice[str]):
         p = self.bot.get_player(interaction.user.id)
@@ -127,7 +155,7 @@ class Guilds(commands.Cog):
         embed = discord.Embed(title="🛒 Purchase Successful", description=f"Bought **{item_info['name']}** for `{item_info['price']} Gold`!\nUse `/equip` or `/use` to activate it.", color=0x2ecc71)
         await interaction.response.send_message(embed=embed)
 
-    # 22. /equip
+    # /equip
     @app_commands.command(name="equip", description="Equip a weapon from your Backpack")
     async def equip(self, interaction: discord.Interaction, weapon_name: str):
         p = self.bot.get_player(interaction.user.id)
@@ -139,7 +167,7 @@ class Guilds(commands.Cog):
                 break
                 
         if not matched_item:
-            await interaction.response.send_message("❌ Weapon not found in your Backpack!", ephemeral=True)
+            await interaction.response.send_message("❌ Weapon not found in your Backpack! Check spelling or use `/profile`.", ephemeral=True)
             return
             
         p["inventory"].remove(matched_item)
@@ -149,6 +177,7 @@ class Guilds(commands.Cog):
         p["weapon"] = matched_item
         p["weapon_level"] = 0
         
+        # Extract ATK bonus automatically from weapon name string e.g. "+220 ATK"
         try:
             boost = int(matched_item.split("+")[1].split(" ")[0])
             p["bonus_atk"] = boost
@@ -156,10 +185,10 @@ class Guilds(commands.Cog):
             p["bonus_atk"] = 5
             
         self.bot.save_player(p)
-        embed = discord.Embed(title="⚔️ Weapon Equipped", description=f"Successfully equipped **{matched_item}**!", color=0xf1c40f)
+        embed = discord.Embed(title="⚔️ Weapon Equipped", description=f"Successfully equipped **{matched_item}**!\nBonus ATK set to **+{p['bonus_atk']}**.", color=0xf1c40f)
         await interaction.response.send_message(embed=embed)
 
-    # 23. /use
+    # /use
     @app_commands.command(name="use", description="Consume an item from your Backpack")
     @app_commands.choices(item=[
         app_commands.Choice(name="Health Potion", value="Health Potion"),
@@ -184,7 +213,7 @@ class Guilds(commands.Cog):
         embed = discord.Embed(title="🧪 Item Consumed", description=desc, color=0x3498db)
         await interaction.response.send_message(embed=embed)
 
-    # 24. /pet_adopt
+    # /pet_adopt
     @app_commands.command(name="pet_adopt", description="Adopt a companion pet (+50% EXP boost) for 500 Gold")
     async def pet_adopt(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
