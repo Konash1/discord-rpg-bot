@@ -2,9 +2,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-# 30+ Achievements List with conditions and rewards
+# 30+ Achievements List
 ACHIEVEMENTS_LIST = [
-    # Combat & Dungeons (8)
+    # Combat & Dungeons
     {"id": "first_blood", "cat": "⚔️ Combat", "name": "First Blood", "desc": "Win 1 PvP duel", "key": "wins", "target": 1, "reward": 150},
     {"id": "pvp_warrior", "cat": "⚔️ Combat", "name": "Gladiator", "desc": "Win 10 PvP duels", "key": "wins", "target": 10, "reward": 500},
     {"id": "pvp_legend", "cat": "⚔️ Combat", "name": "Arena Master", "desc": "Win 50 PvP duels", "key": "wins", "target": 50, "reward": 2500},
@@ -14,7 +14,7 @@ ACHIEVEMENTS_LIST = [
     {"id": "weapon_master", "cat": "⚔️ Combat", "name": "Master Blacksmith", "desc": "Forge a +5 Weapon", "key": "weapon_level", "target": 5, "reward": 800},
     {"id": "bounty_hunter", "cat": "⚔️ Combat", "name": "Headhunter", "desc": "Have a bounty placed on you", "key": "bounty", "target": 100, "reward": 400},
 
-    # Economy & Wealth (8)
+    # Economy & Wealth
     {"id": "pocket_change", "cat": "💰 Wealth", "name": "Getting Started", "desc": "Hold 500 Gold in wallet", "key": "gold", "target": 500, "reward": 100},
     {"id": "thrifty", "cat": "💰 Wealth", "name": "Smart Saver", "desc": "Deposit 1,000 Gold in bank", "key": "bank", "target": 1000, "reward": 250},
     {"id": "wealthy", "cat": "💰 Wealth", "name": "Merchant Prince", "desc": "Deposit 10,000 Gold in bank", "key": "bank", "target": 10000, "reward": 1500},
@@ -24,7 +24,7 @@ ACHIEVEMENTS_LIST = [
     {"id": "first_purchase", "cat": "💰 Wealth", "name": "Support Local Business", "desc": "Equip any non-wooden weapon", "key": "has_custom_weapon", "target": 1, "reward": 200},
     {"id": "pet_owner", "cat": "💰 Wealth", "name": "Beast Tamer", "desc": "Adopt a companion pet", "key": "has_pet", "target": 1, "reward": 350},
 
-    # Gathering & Crafting (8)
+    # Gathering & Crafting
     {"id": "first_catch", "cat": "🎣 Gathering", "name": "First Catch", "desc": "Catch 1 Fish", "key": "fish_count", "target": 1, "reward": 100},
     {"id": "angler", "cat": "🎣 Gathering", "name": "Avid Fisherman", "desc": "Catch 10 Fish", "key": "fish_count", "target": 10, "reward": 500},
     {"id": "poseidon", "cat": "🎣 Gathering", "name": "Ruler of the Seas", "desc": "Catch 50 Fish", "key": "fish_count", "target": 50, "reward": 2000},
@@ -34,13 +34,11 @@ ACHIEVEMENTS_LIST = [
     {"id": "alchemist", "cat": "🧪 Crafting", "name": "Apprentice Alchemist", "desc": "Craft 1 Health Potion", "key": "crafted_potions", "target": 1, "reward": 250},
     {"id": "master_alchemist", "cat": "🧪 Crafting", "name": "Grand Pharmacist", "desc": "Craft 10 Health Potions", "key": "crafted_potions", "target": 10, "reward": 1200},
 
-    # Guild & Social (4)
+    # Guild & Social
     {"id": "guild_member", "cat": "🛡️ Guild", "name": "Brotherhood", "desc": "Join or create a Guild", "key": "in_guild", "target": 1, "reward": 300},
     {"id": "charity", "cat": "🛡️ Guild", "name": "Generous Leader", "desc": "Pay another player gold", "key": "gold_given", "target": 500, "reward": 200},
-    {"id": "socialite", "cat": "🛡️ Guild", "name": "Server Veteran", "desc": "Play 25 total commands", "key": "commands_used", "target": 25, "reward": 400},
-    {"id": "popular", "cat": "🛡️ Guild", "name": "Famous Hero", "desc": "Play 100 total commands", "key": "commands_used", "target": 100, "reward": 1500},
 
-    # Gambling & Luck (5)
+    # Gambling & Luck
     {"id": "lucky_flip", "cat": "🎰 Casino", "name": "Lucky Toss", "desc": "Win a Coinflip", "key": "coinflip_wins", "target": 1, "reward": 150},
     {"id": "high_roller_casino", "cat": "🎰 Casino", "name": "Casino King", "desc": "Win 10 Coinflips", "key": "coinflip_wins", "target": 10, "reward": 800},
     {"id": "slots_beginner", "cat": "🎰 Casino", "name": "Slot Spinner", "desc": "Spin the slots 5 times", "key": "slots_played", "target": 5, "reward": 250},
@@ -49,12 +47,12 @@ ACHIEVEMENTS_LIST = [
 ]
 
 DAILY_QUESTS_POOL = [
-    {"id": "q_hunt", "title": "Slay Wild Beasts 🐺", "desc": "Defeat 3 monsters using /hunt", "target": 3, "reward": 200},
-    {"id": "q_fish", "title": "Deep Water Angler 🐟", "desc": "Catch 2 Fish using /fish", "target": 2, "reward": 180},
-    {"id": "q_mine", "title": "Cave Expedition 💎", "desc": "Extract 3 Ores using /mine", "target": 3, "reward": 220},
-    {"id": "q_gamble", "title": "Casino Thrills 🎰", "desc": "Play 3 Coinflips or Slots", "target": 3, "reward": 150},
-    {"id": "q_dungeon", "title": "Dungeon Crawler 🏰", "desc": "Attempt 2 Dungeon raids", "target": 2, "reward": 300},
-    {"id": "q_forge", "title": "Blacksmith Shift 🔨", "desc": "Attempt 1 Weapon Forge", "target": 1, "reward": 250}
+    {"title": "Slay Wild Beasts 🐺", "desc": "Defeat 3 monsters using `/hunt`", "reward": 200},
+    {"title": "Deep Water Angler 🐟", "desc": "Catch 2 Fish using `/fish`", "reward": 180},
+    {"title": "Cave Expedition 💎", "desc": "Extract 3 Ores using `/mine`", "reward": 220},
+    {"title": "Casino Thrills 🎰", "desc": "Play 3 Coinflips or Slots", "reward": 150},
+    {"title": "Dungeon Crawler 🏰", "desc": "Attempt 2 Dungeon raids", "reward": 300},
+    {"title": "Blacksmith Shift 🔨", "desc": "Attempt 1 Weapon Forge", "reward": 250}
 ]
 
 class Quests(commands.Cog):
@@ -62,7 +60,6 @@ class Quests(commands.Cog):
         self.bot = bot
 
     def get_user_value(self, p, key):
-        """Helper to safely evaluate player stats for advancements"""
         if key == "inv_count":
             return len(p.get("inventory", []))
         elif key == "has_custom_weapon":
@@ -73,8 +70,46 @@ class Quests(commands.Cog):
             return 1 if p.get("guild") else 0
         return p.get(key, 0)
 
-    # 31. /advancements
-    @app_commands.command(name="advancements", description="View all 30+ advancements and claim unlocked rewards")
+    # 1. /help
+    @app_commands.command(name="help", description="List all available RPG commands by category")
+    async def help_command(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="📜 RPG Bot — Command Guide",
+            description="Here is a complete list of all available slash commands:",
+            color=0x3498db
+        )
+
+        embed.add_field(
+            name="💰 Economy & Profile",
+            value="`/profile` • `/balance` • `/daily` • `/work` • `/deposit` • `/withdraw` • `/pay` • `/leaderboard`",
+            inline=False
+        )
+        embed.add_field(
+            name="⚔️ Combat & Adventure",
+            value="`/hunt` • `/dungeon` • `/boss` • `/boss_attack` • `/pvp` • `/forge` • `/bounty` • `/skill`",
+            inline=False
+        )
+        embed.add_field(
+            name="🛡️ Guilds & Shop",
+            value="`/guild_create` • `/guild_join` • `/guild_leave` • `/guild_info` • `/shop` • `/equip` • `/use` • `/pet_adopt`",
+            inline=False
+        )
+        embed.add_field(
+            name="🎣 Gathering & Casino",
+            value="`/fish` • `/mine` • `/craft` • `/coinflip` • `/slots` • `/dice`",
+            inline=False
+        )
+        embed.add_field(
+            name="📜 Quests & System",
+            value="`/quest` • `/claim_quest` • `/advancements` • `/claim_advancement` • `/ping` • `/bot_info` • `/help`",
+            inline=False
+        )
+
+        embed.set_footer(text="Created by Konashi • Type / standard slash commands")
+        await interaction.response.send_message(embed=embed)
+
+    # 2. /advancements
+    @app_commands.command(name="advancements", description="View all 30+ advancements and progress")
     async def advancements(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
         unlocked_list = p.get("unlocked_achievements", [])
@@ -85,7 +120,6 @@ class Quests(commands.Cog):
             color=0xf1c40f
         )
 
-        # Show status by category
         categories = {}
         for ach in ACHIEVEMENTS_LIST:
             cat = ach["cat"]
@@ -99,13 +133,12 @@ class Quests(commands.Cog):
             categories[cat].append(f"{ach['name']} — {status}\n*({ach['desc']} • Reward: `{ach['reward']} G`)*")
 
         for cat_name, items in categories.items():
-            # Show top 3 per category to prevent clutter
             embed.add_field(name=cat_name, value="\n".join(items[:3]), inline=False)
 
         await interaction.response.send_message(embed=embed)
 
-    # 32. /claim_advancement
-    @app_commands.command(name="claim_advancement", description="Check and claim all pending advancement rewards!")
+    # 3. /claim_advancement
+    @app_commands.command(name="claim_advancement", description="Claim rewards for unlocked advancements!")
     async def claim_advancement(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
         if "unlocked_achievements" not in p:
@@ -141,7 +174,7 @@ class Quests(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    # 33. /quest
+    # 4. /quest
     @app_commands.command(name="quest", description="View your current active daily quests")
     async def quest(self, interaction: discord.Interaction):
         embed = discord.Embed(title="📜 Active Daily Quest Board", color=0x3498db)
@@ -156,7 +189,7 @@ class Quests(commands.Cog):
         embed.set_footer(text="Complete these actions and use /claim_quest to receive gold!")
         await interaction.response.send_message(embed=embed)
 
-    # 34. /claim_quest
+    # 5. /claim_quest
     @app_commands.command(name="claim_quest", description="Claim daily quest gold bonus")
     async def claim_quest(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
@@ -171,23 +204,26 @@ class Quests(commands.Cog):
         )
         await interaction.response.send_message(embed=embed)
 
-    # 35. /ping
-    @app_commands.command(name="ping", description="Check bot latency and database response time")
+    # 6. /ping
+    @app_commands.command(name="ping", description="Check bot latency and connection status")
     async def ping(self, interaction: discord.Interaction):
         latency = round(self.bot.latency * 1000)
         embed = discord.Embed(title="🏓 Pong!", description=f"Bot Latency: `{latency} ms`", color=0x2ecc71)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # 36. /bot_info
-    @app_commands.command(name="bot_info", description="View RPG server statistics and active players")
+    # 7. /bot_info
+    @app_commands.command(name="bot_info", description="View RPG server statistics and developer credits")
     async def bot_info(self, interaction: discord.Interaction):
         total_players = self.bot.db_players.count_documents({})
         total_guilds = self.bot.db_guilds.count_documents({})
 
-        embed = discord.Embed(title="🤖 RPG Bot Status", color=0x9b59b6)
+        embed = discord.Embed(title="🤖 RPG Bot Info", color=0x9b59b6)
+        embed.add_field(name="Developer", value="`Created by Konashi`", inline=False)
         embed.add_field(name="Registered Players", value=f"`{total_players}`", inline=True)
         embed.add_field(name="Active Guilds", value=f"`{total_guilds}`", inline=True)
-        embed.add_field(name="Servers Joined", value=f"`{len(self.bot.guilds)}`", inline=True)
+        embed.add_field(name="Connected Servers", value=f"`{len(self.bot.guilds)}`", inline=True)
+        embed.set_footer(text="Created by Konashi • Discord.py v2 & MongoDB")
+
         await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
