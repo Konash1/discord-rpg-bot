@@ -16,6 +16,15 @@ client = MongoClient(MONGO_URI)
 db = client["rpg_bot_db"]
 players_col = db["players"]
 
+# Shop Item Registry: name, price, type, stat_boost
+SHOP_ITEMS = {
+    "potion": {"name": "Health Potion", "price": 50, "type": "consumable"},
+    "exp_scroll": {"name": "EXP Scroll", "price": 150, "type": "consumable"},
+    "dagger": {"name": "Steel Dagger (+10 ATK)", "price": 100, "type": "weapon", "atk": 10},
+    "iron_sword": {"name": "Iron Sword (+25 ATK)", "price": 250, "type": "weapon", "atk": 25},
+    "obsidian_blade": {"name": "Obsidian Blade (+50 ATK)", "price": 600, "type": "weapon", "atk": 50}
+}
+
 def get_player(user_id):
     uid = str(user_id)
     player = players_col.find_one({"_id": uid})
@@ -28,8 +37,8 @@ def get_player(user_id):
             "level": 1,
             "hp": 100,
             "max_hp": 100,
-            "atk": 10,
-            "def": 5,
+            "base_atk": 10,
+            "bonus_atk": 5, # From default wooden sword
             "weapon": "Wooden Sword (+5 ATK)",
             "weapon_level": 0,
             "inventory": ["Health Potion"],
@@ -41,6 +50,12 @@ def get_player(user_id):
         }
         players_col.insert_one(default_player)
         return default_player
+        
+    # Field safety migration check
+    if "base_atk" not in player:
+        player["base_atk"] = player.get("atk", 10)
+        player["bonus_atk"] = 5
+        
     return player
 
 def save_player(player):
@@ -48,13 +63,12 @@ def save_player(player):
 
 global_boss = {"name": "Dragon King", "hp": 500, "max_hp": 500, "reward": 1000}
 
-# Visual HP Bar Generator
 def make_hp_bar(current, max_val, length=10):
     percent = max(0, min(1.0, current / max_val))
     filled = int(length * percent)
     return "█" * filled + "░" * (length - filled)
 
-# --- CLEAN EMBED GENERATORS ---
+# --- EMBEDS ---
 def build_hunt_embed(user_id, username):
     p = get_player(user_id)
     
@@ -77,10 +91,10 @@ def build_hunt_embed(user_id, username):
     lvl_up_text = ""
     if p["exp"] >= p["level"] * 100:
         p["level"] += 1
-        p["atk"] += 5
+        p["base_atk"] += 5
         p["max_hp"] += 20
         p["hp"] = p["max_hp"]
-        lvl_up_text = f"\n\n🎉 **LEVEL UP!** You are now **Level {p['level']}**! *(+5 ATK, +20 HP)*"
+        lvl_up_text = f"\n\n🎉 **LEVEL UP!** You are now **Level {p['level']}**! *(+5 Base ATK, +20 HP)*"
     
     save_player(p)
     
@@ -96,13 +110,15 @@ def build_hunt_embed(user_id, username):
 
 def build_profile_embed(user_id, username):
     p = get_player(user_id)
+    total_atk = p["base_atk"] + p["bonus_atk"] + (p["weapon_level"] * 5)
+    
     embed = discord.Embed(
         title=f"🛡️ Character Profile — {username}",
         color=0x3498db
     )
-    embed.add_field(name="📊 Stats", value=f"**Level:** {p['level']}\n**EXP:** {p['exp']}/{p['level']*100}\n**ATK:** {p['atk']}", inline=True)
+    embed.add_field(name="📊 Stats", value=f"**Level:** {p['level']}\n**EXP:** {p['exp']}/{p['level']*100}\n**Total ATK:** {total_atk} *(Base {p['base_atk']} + Weapon {p['bonus_atk']})*", inline=True)
     embed.add_field(name="💼 Economy", value=f"**Gold:** {p['gold']} G\n**Bounty:** {p['bounty']} G\n**Guild:** {p['guild'] or 'None'}", inline=True)
-    embed.add_field(name="⚔️ Equipment", value=f"**Weapon:** {p['weapon']} `(+{p['weapon_level']})`\n**Pet:** {p['pet'] or 'None'}\n**Fish:** {p['fish_count']} 🐟", inline=False)
+    embed.add_field(name="⚔️ Equipment", value=f"**Equipped Weapon:** {p['weapon']} `(+{p['weapon_level']})`\n**Pet:** {p['pet'] or 'None'}\n**Fish:** {p['fish_count']} 🐟", inline=False)
     
     items = ", ".join([f"`{i}`" for i in p['inventory']]) if p['inventory'] else "*Empty*"
     embed.add_field(name="🎒 Backpack", value=items, inline=False)
@@ -171,6 +187,137 @@ async def profile(interaction: discord.Interaction):
     embed = build_profile_embed(interaction.user.id, interaction.user.name)
     await interaction.response.send_message(embed=embed)
 
+# --- SHOP & INVENTORY COMMANDS ---
+@bot.tree.command(name="shop", description="Buy items and weapons")
+@app_commands.choices(item=[
+    app_commands.Choice(name="Health Potion (50 Gold)", value="potion"),
+    app_commands.Choice(name="EXP Scroll (150 Gold)", value="exp_scroll"),
+    app_commands.Choice(name="Steel Dagger (+10 ATK) (100 Gold)", value="dagger"),
+    app_commands.Choice(name="Iron Sword (+25 ATK) (250 Gold)", value="iron_sword"),
+    app_commands.Choice(name="Obsidian Blade (+50 ATK) (600 Gold)", value="obsidian_blade")
+])
+async def shop(interaction: discord.Interaction, item: app_commands.Choice[str]):
+    p = get_player(interaction.user.id)
+    item_info = SHOP_ITEMS[item.value]
+    
+    if p["gold"] < item_info["price"]:
+        await interaction.response.send_message("❌ Not enough gold!", ephemeral=True)
+        return
+        
+    p["gold"] -= item_info["price"]
+    p["inventory"].append(item_info["name"])
+    save_player(p)
+    
+    embed = discord.Embed(
+        title="🛒 Purchase Successful", 
+        description=f"Bought **{item_info['name']}** for `{item_info['price']} Gold`!\n*(Check `/profile` and use `/equip` or `/use`)*", 
+        color=0x2ecc71
+    )
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="equip", description="Equip a weapon from your Backpack")
+async def equip(interaction: discord.Interaction, weapon_name: str):
+    p = get_player(interaction.user.id)
+    
+    # Find weapon matching in inventory
+    matched_item = None
+    for item in p["inventory"]:
+        if weapon_name.lower() in item.lower() and "ATK" in item:
+            matched_item = item
+            break
+            
+    if not matched_item:
+        await interaction.response.send_message("❌ Weapon not found in your Backpack! Make sure you spell it right.", ephemeral=True)
+        return
+        
+    # Swap weapon
+    p["inventory"].remove(matched_item)
+    if p["weapon"]:
+        p["inventory"].append(p["weapon"]) # Put old weapon back in backpack
+        
+    p["weapon"] = matched_item
+    p["weapon_level"] = 0
+    
+    # Extract ATK boost value from string, e.g., "+25 ATK"
+    try:
+        boost = int(matched_item.split("+")[1].split(" ")[0])
+        p["bonus_atk"] = boost
+    except:
+        p["bonus_atk"] = 5
+        
+    save_player(p)
+    embed = discord.Embed(title="⚔️ Weapon Equipped!", description=f"You equipped **{matched_item}**!", color=0xf1c40f)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="use", description="Use a consumable item from Backpack")
+@app_commands.choices(item=[
+    app_commands.Choice(name="Health Potion", value="Health Potion"),
+    app_commands.Choice(name="EXP Scroll", value="EXP Scroll")
+])
+async def use(interaction: discord.Interaction, item: app_commands.Choice[str]):
+    p = get_player(interaction.user.id)
+    
+    if item.value not in p["inventory"]:
+        await interaction.response.send_message("❌ You don't have that item in your Backpack!", ephemeral=True)
+        return
+        
+    p["inventory"].remove(item.value)
+    
+    if item.value == "Health Potion":
+        p["hp"] = min(p["max_hp"], p["hp"] + 50)
+        desc = f"Used Health Potion! Restored HP to **{p['hp']}/{p['max_hp']}**."
+    elif item.value == "EXP Scroll":
+        p["exp"] += 100
+        desc = "Used EXP Scroll! Gained **+100 EXP**."
+        
+    save_player(p)
+    embed = discord.Embed(title="🧪 Item Used", description=desc, color=0x3498db)
+    await interaction.response.send_message(embed=embed)
+
+# --- GUILD COMMANDS ---
+@bot.tree.command(name="guild_create", description="Create a new Guild (Costs 500 Gold)")
+async def guild_create(interaction: discord.Interaction, guild_name: str):
+    p = get_player(interaction.user.id)
+    if p["guild"]:
+        await interaction.response.send_message("❌ You are already in a guild! Leave first with `/guild_leave`.", ephemeral=True)
+        return
+    if p["gold"] < 500:
+        await interaction.response.send_message("❌ Creating a guild costs 500 Gold!", ephemeral=True)
+        return
+        
+    p["gold"] -= 500
+    p["guild"] = guild_name
+    save_player(p)
+    
+    embed = discord.Embed(title="🛡️ Guild Created!", description=f"You founded **{guild_name}** for 500 Gold!", color=0x9b59b6)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="guild_join", description="Join an existing Guild")
+async def guild_join(interaction: discord.Interaction, guild_name: str):
+    p = get_player(interaction.user.id)
+    if p["guild"]:
+        await interaction.response.send_message("❌ You are already in a guild!", ephemeral=True)
+        return
+        
+    p["guild"] = guild_name
+    save_player(p)
+    embed = discord.Embed(title="🛡️ Guild Joined!", description=f"You joined **{guild_name}**!", color=0x3498db)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="guild_leave", description="Leave your current Guild")
+async def guild_leave(interaction: discord.Interaction):
+    p = get_player(interaction.user.id)
+    if not p["guild"]:
+        await interaction.response.send_message("❌ You are not in a guild!", ephemeral=True)
+        return
+        
+    old_guild = p["guild"]
+    p["guild"] = None
+    save_player(p)
+    embed = discord.Embed(title="🛡️ Guild Left", description=f"You left **{old_guild}**.", color=0xe74c3c)
+    await interaction.response.send_message(embed=embed)
+
+# --- OTHER GAME MECHANICS ---
 @bot.tree.command(name="dungeon", description="Explore dungeon floors")
 async def dungeon(interaction: discord.Interaction, floor: int):
     p = get_player(interaction.user.id)
@@ -217,7 +364,8 @@ async def pet_buy(interaction: discord.Interaction):
 @bot.tree.command(name="skill", description="Use Fireball spell")
 async def skill(interaction: discord.Interaction):
     p = get_player(interaction.user.id)
-    dmg = p["atk"] * 2
+    total_atk = p["base_atk"] + p["bonus_atk"] + (p["weapon_level"] * 5)
+    dmg = total_atk * 2
     embed = discord.Embed(title="🔥 Skill Activated: Fireball", description=f"You cast Fireball dealing **{dmg} Damage**!", color=0xe67e22)
     await interaction.response.send_message(embed=embed)
 
@@ -252,7 +400,6 @@ async def forge(interaction: discord.Interaction):
     p["gold"] -= cost
     if random.randint(1, 100) <= 75:
         p["weapon_level"] += 1
-        p["atk"] += 5
         embed = discord.Embed(title="✨ Forge Success!", description=f"Weapon upgraded to **+{p['weapon_level']}** *(+5 ATK)*!", color=0xf1c40f)
     else:
         embed = discord.Embed(title="💥 Forge Failed!", description="The upgrade failed and your materials were consumed.", color=0xe74c3c)
@@ -303,24 +450,6 @@ async def leaderboard(interaction: discord.Interaction):
     embed = discord.Embed(title="🏆 Gold Leaderboard", description=text or "No data yet.", color=0xf1c40f)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="shop", description="Buy items")
-@app_commands.choices(item=[
-    app_commands.Choice(name="Iron Sword (200 Gold)", value="iron_sword"),
-    app_commands.Choice(name="Health Potion (50 Gold)", value="potion")
-])
-async def shop(interaction: discord.Interaction, item: app_commands.Choice[str]):
-    p = get_player(interaction.user.id)
-    prices = {"iron_sword": 200, "potion": 50}
-    price = prices[item.value]
-    if p["gold"] < price:
-        await interaction.response.send_message("❌ Not enough gold!", ephemeral=True)
-        return
-    p["gold"] -= price
-    p["inventory"].append(item.name)
-    save_player(p)
-    embed = discord.Embed(title="🛒 Purchase Successful", description=f"Bought **{item.name}** for `{price} Gold`!", color=0x2ecc71)
-    await interaction.response.send_message(embed=embed)
-
 @bot.tree.command(name="coinflip", description="Gamble gold")
 @app_commands.choices(choice=[app_commands.Choice(name="Heads", value="heads"), app_commands.Choice(name="Tails", value="tails")])
 async def coinflip(interaction: discord.Interaction, bet: int, choice: app_commands.Choice[str]):
@@ -341,7 +470,8 @@ async def coinflip(interaction: discord.Interaction, bet: int, choice: app_comma
 @bot.tree.command(name="boss_attack", description="Raid World Boss")
 async def boss_attack(interaction: discord.Interaction):
     p = get_player(interaction.user.id)
-    dmg = random.randint(p["atk"], p["atk"] + 20)
+    total_atk = p["base_atk"] + p["bonus_atk"] + (p["weapon_level"] * 5)
+    dmg = random.randint(total_atk, total_atk + 20)
     global_boss["hp"] -= dmg
     if global_boss["hp"] <= 0:
         global_boss["hp"] = global_boss["max_hp"]
