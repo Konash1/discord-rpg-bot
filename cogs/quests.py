@@ -227,20 +227,5 @@ class Quests(commands.Cog):
         embed = discord.Embed(title="🏓 Pong!", description=f"Bot Latency: `{latency} ms`", color=0x2ecc71)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # 7. /info
-    @app_commands.command(name="info", description="View RPG server statistics and developer credits")
-    async def info(self, interaction: discord.Interaction):
-        total_players = self.bot.db_players.count_documents({})
-        total_guilds = self.bot.db_guilds.count_documents({})
-
-        embed = discord.Embed(title="🤖 RPG Bot Info", color=0x9b59b6)
-        embed.add_field(name="Developer", value="`Created by Konashi`", inline=False)
-        embed.add_field(name="Registered Players", value=f"`{total_players}`", inline=True)
-        embed.add_field(name="Active Guilds", value=f"`{total_guilds}`", inline=True)
-        embed.add_field(name="Connected Servers", value=f"`{len(self.bot.guilds)}`", inline=True)
-        embed.set_footer(text="Created by Konashi • Discord.py v2 & MongoDB")
-
-        await interaction.response.send_message(embed=embed)
-
 async def setup(bot):
     await bot.add_cog(Quests(bot))
