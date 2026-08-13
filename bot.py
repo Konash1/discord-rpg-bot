@@ -2,31 +2,28 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import random
-import json
 import os
 import time
+from pymongo import MongoClient
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-DATA_FILE = "player_data.json"
+# --- MONGODB SETUP ---
+# ⚠️ REPLACE <db_password> WITH YOUR ACTUAL DATABASE PASSWORD BELOW ⚠️
+MONGO_URI = "mongodb+srv://lol369756_db_user:IpKu376J5NfGvDrX@cluster0.gfuarhe.mongodb.net/?appName=Cluster0"
 
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    return {}
-
-def save_data(data):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-
-player_data = load_data()
+client = MongoClient(MONGO_URI)
+db = client["rpg_bot_db"]
+players_col = db["players"]
 
 def get_player(user_id):
     uid = str(user_id)
-    if uid not in player_data:
-        player_data[uid] = {
+    player = players_col.find_one({"_id": uid})
+    
+    if not player:
+        default_player = {
+            "_id": uid,
             "gold": 100,
             "exp": 0,
             "level": 1,
@@ -43,11 +40,14 @@ def get_player(user_id):
             "bounty": 0,
             "guild": None
         }
-        save_data(player_data)
-    return player_data[uid]
+        players_col.insert_one(default_player)
+        return default_player
+    return player
+
+def save_player(player):
+    players_col.replace_one({"_id": player["_id"]}, player)
 
 global_boss = {"name": "Dragon King", "hp": 500, "max_hp": 500, "reward": 1000}
-guilds = {}
 
 # Visual HP Bar Generator
 def make_hp_bar(current, max_val, length=10):
@@ -83,7 +83,7 @@ def build_hunt_embed(user_id, username):
         p["hp"] = p["max_hp"]
         lvl_up_text = f"\n\n🎉 **LEVEL UP!** You are now **Level {p['level']}**! *(+5 ATK, +20 HP)*"
     
-    save_data(player_data)
+    save_player(p)
     
     embed = discord.Embed(
         title="⚔️ Monster Encounter",
@@ -120,7 +120,7 @@ def build_boss_embed():
     embed.add_field(name="🏆 Bounty Reward", value=f"`{global_boss['reward']} Gold` for the final blow!", inline=False)
     return embed
 
-# --- INTERACTIVE DROPDOWN & BUTTON UI ---
+# --- INTERACTIVE UI ---
 class RPGNavSelect(discord.ui.Select):
     def __init__(self, owner_id):
         self.owner_id = owner_id
@@ -160,7 +160,7 @@ async def on_ready():
     except Exception as e:
         print(e)
 
-# --- SLASH COMMANDS WITH CLEAN EMBEDS ---
+# --- COMMANDS ---
 @bot.tree.command(name="hunt", description="Hunt monsters with interactive menu")
 async def hunt(interaction: discord.Interaction):
     embed = build_hunt_embed(interaction.user.id, interaction.user.name)
@@ -183,7 +183,7 @@ async def dungeon(interaction: discord.Interaction, floor: int):
     if random.randint(1, 100) <= success_rate:
         reward = floor * 150
         p["gold"] += reward
-        save_data(player_data)
+        save_player(p)
         embed = discord.Embed(title=f"🏰 Dungeon Floor {floor} Cleared!", description=f"You successfully cleared the floor and retrieved **+{reward} Gold**!", color=0x2ecc71)
     else:
         embed = discord.Embed(title=f"💀 Dungeon Floor {floor} Failed!", description="The monsters overwhelmed you! You escaped back to safety empty-handed.", color=0xe74c3c)
@@ -199,7 +199,7 @@ async def daily(interaction: discord.Interaction):
         
     p["gold"] += 250
     p["last_daily"] = now
-    save_data(player_data)
+    save_player(p)
     embed = discord.Embed(title="🎁 Daily Reward Claimed", description="You received **+250 Gold**!", color=0xf1c40f)
     await interaction.response.send_message(embed=embed)
 
@@ -211,7 +211,7 @@ async def pet_buy(interaction: discord.Interaction):
         return
     p["gold"] -= 500
     p["pet"] = "Baby Dragon 🐉"
-    save_data(player_data)
+    save_player(p)
     embed = discord.Embed(title="🐶 New Pet Adopted!", description="You adopted a **Baby Dragon 🐉**! Grants **+50% bonus EXP** from hunts.", color=0x9b59b6)
     await interaction.response.send_message(embed=embed)
 
@@ -226,7 +226,7 @@ async def skill(interaction: discord.Interaction):
 async def fish(interaction: discord.Interaction):
     p = get_player(interaction.user.id)
     p["fish_count"] += 1
-    save_data(player_data)
+    save_player(p)
     embed = discord.Embed(title="🎣 Fishing", description=f"You caught a fresh fish! Total Fish: **{p['fish_count']}**", color=0x3498db)
     await interaction.response.send_message(embed=embed)
 
@@ -238,7 +238,7 @@ async def craft(interaction: discord.Interaction):
         return
     p["fish_count"] -= 3
     p["inventory"].append("Health Potion")
-    save_data(player_data)
+    save_player(p)
     embed = discord.Embed(title="🧪 Crafting Complete", description="Crafted **1x Health Potion** from 3 Fish!", color=0x2ecc71)
     await interaction.response.send_message(embed=embed)
 
@@ -257,7 +257,7 @@ async def forge(interaction: discord.Interaction):
         embed = discord.Embed(title="✨ Forge Success!", description=f"Weapon upgraded to **+{p['weapon_level']}** *(+5 ATK)*!", color=0xf1c40f)
     else:
         embed = discord.Embed(title="💥 Forge Failed!", description="The upgrade failed and your materials were consumed.", color=0xe74c3c)
-    save_data(player_data)
+    save_player(p)
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="pvp", description="Duel another member for gold")
@@ -271,9 +271,12 @@ async def pvp(interaction: discord.Interaction, opponent: discord.User, bet: int
     winner = random.choice([interaction.user, opponent])
     loser = opponent if winner == interaction.user else interaction.user
     
-    get_player(winner.id)["gold"] += bet
-    get_player(loser.id)["gold"] -= bet
-    save_data(player_data)
+    w_p = get_player(winner.id)
+    l_p = get_player(loser.id)
+    w_p["gold"] += bet
+    l_p["gold"] -= bet
+    save_player(w_p)
+    save_player(l_p)
     
     embed = discord.Embed(title="⚔️ PvP Duel Results", description=f"**{winner.name}** defeated **{loser.name}** in combat and took **{bet} Gold**!", color=0x9b59b6)
     await interaction.response.send_message(embed=embed)
@@ -287,16 +290,17 @@ async def bounty(interaction: discord.Interaction, target: discord.User, amount:
         return
     p1["gold"] -= amount
     p2["bounty"] += amount
-    save_data(player_data)
+    save_player(p1)
+    save_player(p2)
     embed = discord.Embed(title="🎯 Bounty Placed", description=f"Placed a **{amount} Gold** bounty on {target.name}!", color=0xe74c3c)
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="leaderboard", description="View top richest players")
 async def leaderboard(interaction: discord.Interaction):
-    sorted_players = sorted(player_data.items(), key=lambda x: x[1]["gold"], reverse=True)[:5]
+    top_players = list(players_col.find().sort("gold", -1).limit(5))
     text = ""
-    for idx, (uid, data) in enumerate(sorted_players, 1):
-        text += f"**#{idx}** <@{uid}> — `{data['gold']} G` *(Lvl {data['level']})*\n"
+    for idx, data in enumerate(top_players, 1):
+        text += f"**#{idx}** <@{data['_id']}> — `{data['gold']} G` *(Lvl {data['level']})*\n"
     embed = discord.Embed(title="🏆 Gold Leaderboard", description=text or "No data yet.", color=0xf1c40f)
     await interaction.response.send_message(embed=embed)
 
@@ -314,7 +318,7 @@ async def shop(interaction: discord.Interaction, item: app_commands.Choice[str])
         return
     p["gold"] -= price
     p["inventory"].append(item.name)
-    save_data(player_data)
+    save_player(p)
     embed = discord.Embed(title="🛒 Purchase Successful", description=f"Bought **{item.name}** for `{price} Gold`!", color=0x2ecc71)
     await interaction.response.send_message(embed=embed)
 
@@ -332,7 +336,7 @@ async def coinflip(interaction: discord.Interaction, bet: int, choice: app_comma
     else:
         p["gold"] -= bet
         embed = discord.Embed(title="💀 Coinflip Loss!", description=f"It was **{outcome}**! Lost **-{bet} Gold**!", color=0xe74c3c)
-    save_data(player_data)
+    save_player(p)
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="boss_attack", description="Raid World Boss")
@@ -343,10 +347,10 @@ async def boss_attack(interaction: discord.Interaction):
     if global_boss["hp"] <= 0:
         global_boss["hp"] = global_boss["max_hp"]
         p["gold"] += global_boss["reward"]
-        save_data(player_data)
+        save_player(p)
         embed = discord.Embed(title="💥 FINAL BLOW!", description=f"You landed the final blow on {global_boss['name']}! Received **+{global_boss['reward']} Gold**!", color=0xf1c40f)
     else:
-        save_data(player_data)
+        save_player(p)
         bar = make_hp_bar(global_boss['hp'], global_boss['max_hp'])
         embed = discord.Embed(title="⚔️ Boss Raided", description=f"Dealt **{dmg} DMG**!\n\n**Boss HP:** `{global_boss['hp']}/{global_boss['max_hp']}`\n`[{bar}]`", color=0xe74c3c)
     await interaction.response.send_message(embed=embed)
