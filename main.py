@@ -66,7 +66,8 @@ async def on_ready():
 async def main():
     async with bot:
         await bot.load_extension("cogs.economy")
-        await bot.load_extension("cogs.combat") # <--- Loaded Combat Cog
+        await bot.load_extension("cogs.combat")
+        await bot.load_extension("cogs.guilds")  # <--- Added Guilds Cog
         await bot.start(os.getenv("DISCORD_TOKEN"))
 
 if __name__ == "__main__":
