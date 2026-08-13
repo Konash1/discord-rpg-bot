@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
+import re
 
 # Expanded Shop Catalog with 12 Unique Weapons
 SHOP_ITEMS = {
@@ -26,7 +27,7 @@ SHOP_ITEMS = {
     # Mythic Weapons
     "excalibur": {"name": "Holy Excalibur (+220 ATK)", "price": 4000, "type": "weapon", "atk": 220},
     "scythe": {"name": "Reaper Grim Scythe (+300 ATK)", "price": 6500, "type": "weapon", "atk": 300},
-    "void_blade": {"name": "Void vanquisher (+450 ATK)", "price": 10000, "type": "weapon", "atk": 450}
+    "void_blade": {"name": "Void Vanquisher (+450 ATK)", "price": 10000, "type": "weapon", "atk": 450}
 }
 
 class Guilds(commands.Cog):
@@ -37,10 +38,10 @@ class Guilds(commands.Cog):
     @app_commands.command(name="guild_create", description="Found a new guild for 500 Gold")
     async def guild_create(self, interaction: discord.Interaction, name: str):
         p = self.bot.get_player(interaction.user.id)
-        if p["guild"]:
+        if p.get("guild"):
             await interaction.response.send_message("❌ You are already in a guild!", ephemeral=True)
             return
-        if p["gold"] < 500:
+        if p.get("gold", 0) < 500:
             await interaction.response.send_message("❌ Creating a guild costs 500 Gold!", ephemeral=True)
             return
             
@@ -69,7 +70,7 @@ class Guilds(commands.Cog):
     @app_commands.command(name="guild_join", description="Join an existing guild")
     async def guild_join(self, interaction: discord.Interaction, name: str):
         p = self.bot.get_player(interaction.user.id)
-        if p["guild"]:
+        if p.get("guild"):
             await interaction.response.send_message("❌ You are already in a guild!", ephemeral=True)
             return
             
@@ -91,7 +92,7 @@ class Guilds(commands.Cog):
     @app_commands.command(name="guild_leave", description="Leave your current guild")
     async def guild_leave(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
-        if not p["guild"]:
+        if not p.get("guild"):
             await interaction.response.send_message("❌ You are not in a guild!", ephemeral=True)
             return
             
@@ -100,12 +101,19 @@ class Guilds(commands.Cog):
         
         if guild and str(interaction.user.id) in guild["members"]:
             guild["members"].remove(str(interaction.user.id))
-            self.bot.db_guilds.replace_one({"_id": old_guild_name}, guild)
+            
+            # If guild is empty or owner leaves, disband the guild
+            if len(guild["members"]) == 0 or guild.get("owner_id") == str(interaction.user.id):
+                self.bot.db_guilds.delete_one({"_id": old_guild_name})
+                disband_note = " (The guild was disbanded because the leader left)"
+            else:
+                self.bot.db_guilds.replace_one({"_id": old_guild_name}, guild)
+                disband_note = ""
 
         p["guild"] = None
         self.bot.save_player(p)
         
-        embed = discord.Embed(title="🛡️ Guild Left", description=f"You left **{old_guild_name}**.", color=0xe74c3c)
+        embed = discord.Embed(title="🛡️ Guild Left", description=f"You left **{old_guild_name}**.{disband_note}", color=0xe74c3c)
         await interaction.response.send_message(embed=embed)
 
     # /guild_info
@@ -119,7 +127,7 @@ class Guilds(commands.Cog):
         embed = discord.Embed(title=f"🛡️ Guild: {guild['_id']}", color=0x9b59b6)
         embed.add_field(name="Leader", value=f"<@{guild['owner_id']}>", inline=True)
         embed.add_field(name="Members Count", value=f"`{len(guild['members'])}`", inline=True)
-        embed.add_field(name="Guild Vault", value=f"`{guild['vault']} Gold`", inline=True)
+        embed.add_field(name="Guild Vault", value=f"`{guild.get('vault', 0)} Gold`", inline=True)
         await interaction.response.send_message(embed=embed)
 
     # /shop
@@ -144,12 +152,12 @@ class Guilds(commands.Cog):
         p = self.bot.get_player(interaction.user.id)
         item_info = SHOP_ITEMS[item.value]
         
-        if p["gold"] < item_info["price"]:
+        if p.get("gold", 0) < item_info["price"]:
             await interaction.response.send_message("❌ Insufficient gold balance!", ephemeral=True)
             return
             
         p["gold"] -= item_info["price"]
-        p["inventory"].append(item_info["name"])
+        p.setdefault("inventory", []).append(item_info["name"])
         self.bot.save_player(p)
         
         embed = discord.Embed(title="🛒 Purchase Successful", description=f"Bought **{item_info['name']}** for `{item_info['price']} Gold`!\nUse `/equip` or `/use` to activate it.", color=0x2ecc71)
@@ -159,9 +167,10 @@ class Guilds(commands.Cog):
     @app_commands.command(name="equip", description="Equip a weapon from your Backpack")
     async def equip(self, interaction: discord.Interaction, weapon_name: str):
         p = self.bot.get_player(interaction.user.id)
+        inv = p.get("inventory", [])
         
         matched_item = None
-        for item in p["inventory"]:
+        for item in inv:
             if weapon_name.lower() in item.lower() and "ATK" in item:
                 matched_item = item
                 break
@@ -170,18 +179,19 @@ class Guilds(commands.Cog):
             await interaction.response.send_message("❌ Weapon not found in your Backpack! Check spelling or use `/profile`.", ephemeral=True)
             return
             
-        p["inventory"].remove(matched_item)
-        if p["weapon"]:
-            p["inventory"].append(p["weapon"])
+        inv.remove(matched_item)
+        if p.get("weapon") and p.get("weapon") != "None":
+            inv.append(p["weapon"])
             
         p["weapon"] = matched_item
         p["weapon_level"] = 0
+        p["inventory"] = inv
         
-        # Extract ATK bonus automatically from weapon name string e.g. "+220 ATK"
-        try:
-            boost = int(matched_item.split("+")[1].split(" ")[0])
-            p["bonus_atk"] = boost
-        except Exception:
+        # Robust regex parsing for ATK extraction
+        match = re.search(r'\+(\d+)\s*ATK', matched_item)
+        if match:
+            p["bonus_atk"] = int(match.group(1))
+        else:
             p["bonus_atk"] = 5
             
         self.bot.save_player(p)
@@ -196,17 +206,20 @@ class Guilds(commands.Cog):
     ])
     async def use(self, interaction: discord.Interaction, item: app_commands.Choice[str]):
         p = self.bot.get_player(interaction.user.id)
-        if item.value not in p["inventory"]:
+        inv = p.get("inventory", [])
+
+        if item.value not in inv:
             await interaction.response.send_message("❌ Item not found in Backpack!", ephemeral=True)
             return
             
-        p["inventory"].remove(item.value)
+        inv.remove(item.value)
+        p["inventory"] = inv
         
         if item.value == "Health Potion":
-            p["hp"] = min(p["max_hp"], p["hp"] + 50)
-            desc = f"Restored HP to **{p['hp']}/{p['max_hp']}**!"
+            p["hp"] = min(p.get("max_hp", 100), p.get("hp", 100) + 50)
+            desc = f"Restored HP to **{p['hp']}/{p.get('max_hp', 100)}**!"
         else:
-            p["exp"] += 100
+            p["exp"] = p.get("exp", 0) + 100
             desc = "Gained **+100 EXP**!"
             
         self.bot.save_player(p)
@@ -217,7 +230,7 @@ class Guilds(commands.Cog):
     @app_commands.command(name="pet_adopt", description="Adopt a companion pet (+50% EXP boost) for 500 Gold")
     async def pet_adopt(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
-        if p["gold"] < 500:
+        if p.get("gold", 0) < 500:
             await interaction.response.send_message("❌ Pets cost 500 Gold!", ephemeral=True)
             return
             
