@@ -49,7 +49,6 @@ def get_player(user_id):
 def save_player(player):
     bot.db_players.replace_one({"_id": player["_id"]}, player)
 
-# Attach helpers to bot instance for Cogs access
 bot.get_player = get_player
 bot.save_player = save_player
 
@@ -67,7 +66,8 @@ async def main():
     async with bot:
         await bot.load_extension("cogs.economy")
         await bot.load_extension("cogs.combat")
-        await bot.load_extension("cogs.guilds")  # <--- Added Guilds Cog
+        await bot.load_extension("cogs.guilds")
+        await bot.load_extension("cogs.minigames") # <--- Loaded Minigames Cog
         await bot.start(os.getenv("DISCORD_TOKEN"))
 
 if __name__ == "__main__":
