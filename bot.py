@@ -10,7 +10,6 @@ intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # --- MONGODB SETUP ---
-# ⚠️ REPLACE <db_password> WITH YOUR ACTUAL DATABASE PASSWORD BELOW ⚠️
 MONGO_URI = "mongodb+srv://lol369756_db_user:IpKu376J5NfGvDrX@cluster0.gfuarhe.mongodb.net/?appName=Cluster0"
 
 client = MongoClient(MONGO_URI)
