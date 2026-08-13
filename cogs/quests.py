@@ -211,9 +211,9 @@ class Quests(commands.Cog):
         embed = discord.Embed(title="🏓 Pong!", description=f"Bot Latency: `{latency} ms`", color=0x2ecc71)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # 7. /bot_info
-    @app_commands.command(name="bot_info", description="View RPG server statistics and developer credits")
-    async def bot_info(self, interaction: discord.Interaction):
+# 7. /info (Renamed from bot_info to fix discord.py restriction)
+    @app_commands.command(name="info", description="View RPG server statistics and developer credits")
+    async def info(self, interaction: discord.Interaction):
         total_players = self.bot.db_players.count_documents({})
         total_guilds = self.bot.db_guilds.count_documents({})
 
