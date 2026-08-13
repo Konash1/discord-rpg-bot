@@ -68,13 +68,28 @@ class HuntResultView(discord.ui.View):
         embed.add_field(name="Weapon", value=f"`{p.get('weapon', 'None')}`", inline=True)
 
         view = ProfileView(self.bot, self.user)
-        await interaction.response.send_message(embed=embed, view=view)
+        
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed, view=view)
+        else:
+            await interaction.response.send_message(embed=embed, view=view)
 
 
-# Helper function to execute hunt logic and render embed
+# Helper function to execute hunt logic and render embed safely
 async def do_hunt_action(bot, interaction: discord.Interaction):
     p = bot.get_player(interaction.user.id)
     
+    # Check if player is knocked out
+    if p.get("hp", 100) <= 0:
+        p["hp"] = 20 # Auto-revive with 20 HP
+        bot.save_player(p)
+        death_msg = "💀 You were previously knocked out! The village doctor revived you with 20 HP."
+        if interaction.response.is_done():
+            await interaction.followup.send(death_msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(death_msg, ephemeral=True)
+        return
+
     monsters = [
         {"name": "Goblin Raider", "emoji": "👺", "hp": 40, "atk": 8, "exp": 40, "gold": 41},
         {"name": "Wild Slime", "emoji": "🧪", "hp": 30, "atk": 5, "exp": 25, "gold": 30},
@@ -122,15 +137,24 @@ async def do_hunt_action(bot, interaction: discord.Interaction):
     else:
         player_hp = max(0, p.get("hp", 100) - monster["atk"])
         p["hp"] = player_hp
+        
+        # Revive warning if player died in battle
+        death_note = ""
+        if player_hp == 0:
+            p["hp"] = 20
+            death_note = "\n💀 **You were knocked out and revived at the village with 20 HP!**"
+
         bot.save_player(p)
 
         embed = discord.Embed(
             title="⚔️ Battle Stalemate",
-            description=f"You dealt **{player_atk} DMG** to **{monster['name']}** {monster['emoji']}!\nMonster struck back dealing **{monster['atk']} DMG**! Remaining HP: `{player_hp}/{p.get('max_hp', 100)}`",
+            description=f"You dealt **{player_atk} DMG** to **{monster['name']}** {monster['emoji']}!\nMonster struck back dealing **{monster['atk']} DMG**! Remaining HP: `{p['hp']}/{p.get('max_hp', 100)}`{death_note}",
             color=0xe67e22
         )
 
     view = HuntResultView(bot, interaction.user)
+    
+    # Safe interaction response handling
     if interaction.response.is_done():
         await interaction.followup.send(embed=embed, view=view)
     else:
@@ -165,7 +189,7 @@ class Combat(commands.Cog):
     async def dungeon(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
         if p.get("hp", 100) < 30:
-            await interaction.response.send_message("❌ Your HP is too low! Drink a Health Potion.", ephemeral=True)
+            await interaction.response.send_message("❌ Your HP is too low (<30 HP)! Drink a Health Potion.", ephemeral=True)
             return
 
         success = random.choice([True, False])
@@ -236,6 +260,11 @@ class Combat(commands.Cog):
     @app_commands.command(name="forge", description="Upgrade your currently equipped weapon")
     async def forge(self, interaction: discord.Interaction):
         p = self.bot.get_player(interaction.user.id)
+        
+        if not p.get("weapon") or p.get("weapon") == "None":
+            await interaction.response.send_message("❌ You don't have a weapon equipped! Buy and equip one first.", ephemeral=True)
+            return
+
         cost = 100 * (p.get("weapon_level", 0) + 1)
 
         if p.get("gold", 0) < cost:
@@ -249,7 +278,7 @@ class Combat(commands.Cog):
             p["weapon_level"] = p.get("weapon_level", 0) + 1
             p["bonus_atk"] = p.get("bonus_atk", 0) + 5
             self.bot.save_player(p)
-            embed = discord.Embed(title="🔨 Forge Success!", description=f"Upgraded weapon to **+{p['weapon_level']}**! Bonus ATK increased to **+{p['bonus_atk']}**.", color=0x2ecc71)
+            embed = discord.Embed(title="🔨 Forge Success!", description=f"Upgraded **{p['weapon']}** to **+{p['weapon_level']}**!\nBonus ATK increased to **+{p['bonus_atk']}**.", color=02ecc71)
         else:
             self.bot.save_player(p)
             embed = discord.Embed(title="🔨 Forge Failed", description="The blacksmith failed to upgrade your weapon! Gold was lost.", color=0xe74c3c)
