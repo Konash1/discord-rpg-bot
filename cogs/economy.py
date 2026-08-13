@@ -14,6 +14,16 @@ class Economy(commands.Cog):
         target = user or interaction.user
         p = self.bot.get_player(target.id)
 
+        # Automatic Cleanup: Remove duplicate raw price/weapon names from inventory list
+        raw_inv = p.get("inventory", [])
+        cleaned_inv = [
+            item for item in raw_inv 
+            if not ("Gold" in item or "G)" in item)
+        ]
+        if len(cleaned_inv) != len(raw_inv):
+            p["inventory"] = cleaned_inv
+            self.bot.save_player(p)
+
         embed = discord.Embed(title=f"🛡️ Profile — {target.name}", color=0x3498db)
         embed.set_thumbnail(url=target.display_avatar.url)
         embed.add_field(name="Level", value=f"`Lvl {p.get('level', 1)}` (`{p.get('exp', 0)} EXP`)", inline=True)
@@ -32,8 +42,7 @@ class Economy(commands.Cog):
         embed.add_field(name="Pet", value=f"`{p.get('pet') or 'None'}`", inline=True)
         embed.add_field(name="PvP Record", value=f"`{p.get('wins', 0)}W - {p.get('losses', 0)}L`", inline=True)
         
-        inv = p.get("inventory", [])
-        inv_str = ", ".join(inv) if inv else "Empty"
+        inv_str = ", ".join(cleaned_inv) if cleaned_inv else "Empty"
         embed.add_field(name="Backpack Items", value=f"`{inv_str}`", inline=False)
 
         await interaction.response.send_message(embed=embed)
@@ -148,7 +157,6 @@ class Economy(commands.Cog):
         receiver = self.bot.get_player(target.id)
         sender["gold"] -= amount
         receiver["gold"] = receiver.get("gold", 0) + amount
-        sender["gold_given"] = sender.get("gold_given", 0) + amount
 
         self.bot.save_player(sender)
         self.bot.save_player(receiver)
